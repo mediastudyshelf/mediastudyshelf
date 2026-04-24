@@ -62,6 +62,11 @@ export default function App() {
         setClassError(null);
         const primary = data.class.pdfs.find(p => p.is_primary);
         setActivePdfUrl(primary?.url || data.class.pdfs[0]?.url || null);
+        if (!data.class.video) {
+          setViewMode('pdf');
+        } else {
+          setViewMode('split');
+        }
       })
       .catch(err => {
         setClassData(null);
