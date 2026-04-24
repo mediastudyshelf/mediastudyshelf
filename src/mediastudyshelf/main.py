@@ -23,16 +23,6 @@ async def lifespan(app: FastAPI):
     content_path = get_content_path()
     courses = walk_content(content_path)
     set_courses(courses, content_path)
-    app.mount("/media", StaticFiles(directory=str(content_path)), name="media")
-
-    if serve_frontend():
-        dist = get_frontend_dist()
-        if dist.is_dir():
-            # Serve hashed JS/CSS/assets — must come after /api and /media
-            app.mount("/assets", StaticFiles(directory=str(dist / "assets")), name="frontend-assets")
-            logger.info("Serving frontend from %s", dist)
-        else:
-            logger.warning("SERVE_FRONTEND=1 but dist not found at %s", dist)
 
     watcher_task = None
     if watch_enabled():
@@ -58,6 +48,18 @@ app.include_router(router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Static file mounts — must come BEFORE the SPA catch-all so they take priority.
+app.mount("/media", StaticFiles(directory=str(get_content_path())), name="media")
+
+if serve_frontend():
+    _dist = get_frontend_dist()
+    if _dist.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_dist / "assets")), name="frontend-assets")
+        logger.info("Serving frontend from %s", _dist)
+    else:
+        logger.warning("SERVE_FRONTEND=1 but dist not found at %s", _dist)
 
 
 # SPA fallback — must be registered last so /api/*, /media/*, /assets/* take priority.

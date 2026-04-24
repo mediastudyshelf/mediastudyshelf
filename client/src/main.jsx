@@ -9,6 +9,8 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <Routes>
         <Route path="/course/:courseSlug/:moduleSlug/:classSlug" element={<App />} />
+        <Route path="/course/:courseSlug/:moduleSlug" element={<App />} />
+        <Route path="/course/:courseSlug" element={<App />} />
         <Route path="*" element={<App />} />
       </Routes>
     </BrowserRouter>
