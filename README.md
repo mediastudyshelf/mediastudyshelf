@@ -56,16 +56,45 @@ Open http://localhost:8000.
 
 ```
 /content
-  /01-course-name/
-    course.json              (optional)
-    /01-module-name/
-      /01-class-name/
-        video.mp4
-        lesson-notes.pdf
-        walkthrough.mp3
+  /Course Name/
+    course.json                    (optional — override title)
+    /Module Name/
+      module.json                  (optional — override title)
+      /Class Name/
+        class.json                 (optional — override title, audio labels, primary PDF)
+        video.mp4                  (primary video — first alphabetically)
+        lesson.pdf                 (primary PDF — or main.pdf, or first alphabetically)
+        worksheet.pdf              (additional PDF)
+        walkthrough.mp3            (audio)
+        resources.zip              (extras — anything not video/pdf/audio)
 ```
 
-Folders prefixed with `NN-` are ordered by that number. Display names are derived from the slug (kebab-case → sentence case). See `docs/SPEC.md` for the full content model.
+### Ordering
+
+Folders are sorted using **natural ordering**, so numeric values in names are compared numerically rather than lexicographically. This means you can name your folders however you like and they will sort intuitively:
+
+| Naming style | Sort result |
+|---|---|
+| `Aula 1`, `Aula 2`, `Aula 10` | 1 → 2 → 10 |
+| `01-foundations`, `02-modeling` | 01 → 02 |
+| `Módulo 1`, `Módulo 2`, `Módulo 10` | 1 → 2 → 10 |
+
+Folders with an `NN-` prefix (e.g. `01-intro`) have their prefix stripped for display (kebab-case → sentence case). Folders without a prefix are displayed as-is.
+
+### File classification
+
+| Type | Extensions |
+|---|---|
+| Video | `.mp4`, `.webm`, `.mov` |
+| PDF | `.pdf` |
+| Audio | `.mp3`, `.m4a`, `.wav`, `.ogg` |
+| Extras | everything else |
+
+### Primary PDF resolution
+
+1. `class.json` → `"primary_pdf": "filename.pdf"`
+2. A file named `lesson.pdf` or `main.pdf`
+3. First PDF alphabetically
 
 ## Tests
 
