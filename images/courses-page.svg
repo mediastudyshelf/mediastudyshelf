@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <style>
+      .bg { fill: #f4f2ec; }
+      .card { fill: #ffffff; stroke: rgba(0,0,0,0.12); stroke-width: 0.5; rx: 12; ry: 12; }
+      .card-hover { fill: #ffffff; stroke: rgba(0,0,0,0.2); stroke-width: 0.5; rx: 12; ry: 12; filter: url(#shadow); }
+      .label { font-family: system-ui, -apple-system, sans-serif; font-size: 10px; fill: #888780; letter-spacing: 0.5px; text-transform: uppercase; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 15px; fill: #1a1a1a; font-weight: 500; }
+      .card-title { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; fill: #1a1a1a; font-weight: 500; }
+      .card-meta { font-family: system-ui, -apple-system, sans-serif; font-size: 10px; fill: #888780; }
+    </style>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.06)" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="540" class="bg" />
+
+  <!-- Header -->
+  <text x="480" y="80" text-anchor="middle" class="label">COURSES</text>
+  <text x="480" y="104" text-anchor="middle" class="title">Select a course</text>
+
+  <!-- Card row 1 -->
+  <!-- Card 1 -->
+  <rect x="168" y="140" width="192" height="80" class="card" />
+  <text x="184" y="168" class="card-title">Spanish for Beginners</text>
+  <text x="184" y="186" class="card-meta">8 modules · 42 classes</text>
+
+  <!-- Card 2 -->
+  <rect x="384" y="140" width="192" height="80" class="card-hover" />
+  <text x="400" y="168" class="card-title">French Immersion</text>
+  <text x="400" y="186" class="card-meta">12 modules · 65 classes</text>
+
+  <!-- Card 3 -->
+  <rect x="600" y="140" width="192" height="80" class="card" />
+  <text x="616" y="168" class="card-title">German A1-A2</text>
+  <text x="616" y="186" class="card-meta">6 modules · 30 classes</text>
+
+  <!-- Card row 2 -->
+  <!-- Card 4 -->
+  <rect x="168" y="240" width="192" height="80" class="card" />
+  <text x="184" y="268" class="card-title">Italian Conversation</text>
+  <text x="184" y="286" class="card-meta">4 modules · 20 classes</text>
+
+  <!-- Card 5 -->
+  <rect x="384" y="240" width="192" height="80" class="card" />
+  <text x="400" y="268" class="card-title">Portuguese Advanced</text>
+  <text x="400" y="286" class="card-meta">10 modules · 55 classes</text>
+
+  <!-- Card 6 -->
+  <rect x="600" y="240" width="192" height="80" class="card" />
+  <text x="616" y="268" class="card-title">Japanese N5</text>
+  <text x="616" y="286" class="card-meta">15 modules · 78 classes</text>
+
+  <!-- Card row 3 -->
+  <!-- Card 7 -->
+  <rect x="168" y="340" width="192" height="80" class="card" />
+  <text x="184" y="368" class="card-title">Mandarin Basics</text>
+  <text x="184" y="386" class="card-meta">5 modules · 25 classes</text>
+
+  <!-- Card 8 -->
+  <rect x="384" y="340" width="192" height="80" class="card" />
+  <text x="400" y="368" class="card-title">Korean TOPIK I</text>
+  <text x="400" y="386" class="card-meta">7 modules · 35 classes</text>
+
+  <!-- URL bar hint -->
+  <rect x="280" y="490" width="400" height="28" rx="6" ry="6" fill="#eae7dc" />
+  <text x="480" y="508" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f5e5a">localhost:5173/courses</text>
+</svg>

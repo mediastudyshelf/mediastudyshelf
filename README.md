@@ -2,6 +2,8 @@
 
 A local-first learning tool for video, PDF and audio lessons. Your folder structure is the content model, no CMS, no imports.
 
+![Lesson view](images/lesson-page.svg)
+
 ## Prerequisites
 
 - Python 3.11+
