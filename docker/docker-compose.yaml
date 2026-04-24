@@ -16,7 +16,7 @@ services:
     profiles:
       - dev
     volumes:
-      - ".:/usr/src/app"
+      - "..:/usr/src/app"
     working_dir: "/usr/src/app"
 
   client:
@@ -32,5 +32,5 @@ services:
     profiles:
       - dev
     volumes:
-      - ".:/usr/src/app"
+      - "..:/usr/src/app"
     working_dir: "/usr/src/app"
