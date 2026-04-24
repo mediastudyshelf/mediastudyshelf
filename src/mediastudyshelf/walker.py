@@ -200,7 +200,7 @@ def walk_class(class_path: Path) -> ClassNode:
     audio: list[FileEntry] = []
     extras: list[FileEntry] = []
 
-    for entry in sorted(class_path.iterdir()):
+    for entry in sorted(class_path.iterdir(), key=lambda e: (_natural_key(e.stem), e.suffix.lower())):
         if entry.is_dir() or entry.name.endswith(".json"):
             continue
         category = classify_file(entry.name)
