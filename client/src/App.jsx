@@ -64,6 +64,8 @@ export default function App() {
         setActivePdfUrl(primary?.url || data.class.pdfs[0]?.url || null);
         if (!data.class.video) {
           setViewMode('pdf');
+        } else if (!data.class.pdfs.length) {
+          setViewMode('video');
         } else {
           setViewMode('split');
         }
