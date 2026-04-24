@@ -559,6 +559,75 @@ html, body, #root {
   border-radius: 3px;
 }
 
+/* ── Courses page ────────────────────────────────────────────── */
+
+.courses-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 24px 40px;
+  overflow: auto;
+  background: var(--color-background-secondary);
+}
+
+.courses-page__header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.courses-page__title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-top: 6px;
+}
+
+.courses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.course-card:hover {
+  border-color: var(--color-border-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.course-card--loading {
+  cursor: default;
+  pointer-events: none;
+  min-height: 72px;
+}
+
+.course-card__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  text-transform: capitalize;
+}
+
+.course-card__meta {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+
 /* ── Section labels (reusable) ───────────────────────────────── */
 
 .section-label {

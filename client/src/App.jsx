@@ -36,15 +36,10 @@ export default function App() {
       .finally(() => setTreeLoading(false));
   }, []);
 
-  // Redirect to first class if at root
+  // Redirect to courses page if no course selected
   useEffect(() => {
     if (tree && !courseSlug) {
-      const c = tree.courses[0];
-      if (c) {
-        const m = c.modules[0];
-        const cl = m.classes[0];
-        navigate(`/course/${c.slug}/${m.slug}/${cl.slug}`, { replace: true });
-      }
+      navigate('/courses', { replace: true });
     }
   }, [tree, courseSlug, navigate]);
 
