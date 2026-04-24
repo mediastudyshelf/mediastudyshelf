@@ -216,7 +216,17 @@ export default function PdfPane({ pdfs, activePdfUrl, onPdfSelect, expanded, hid
             <button className="pdf-controls__btn" onClick={zoomIn} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}>+</button>
           </div>
           <div className="pdf-controls__pages">
-            {currentPage} / {totalPages}
+            <button
+              className="pdf-controls__btn"
+              onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+              disabled={currentPage <= 1}
+            >‹</button>
+            <span className="pdf-controls__page-num">{currentPage} / {totalPages}</span>
+            <button
+              className="pdf-controls__btn"
+              onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+            >›</button>
           </div>
         </div>
       </div>
