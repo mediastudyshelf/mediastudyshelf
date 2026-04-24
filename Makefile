@@ -1,12 +1,15 @@
-.PHONY: all up down
+.PHONY: all up down build
 
 all:
 	@echo "Options for running project"
 	@echo
 
 up:
-	docker compose --profile=dev up
+	docker compose -f docker/docker-compose.yaml --profile=dev up
 
 down:
-	docker compose --profile=dev stop
-	docker compose --profile=dev rm -f
+	docker compose -f docker/docker-compose.yaml --profile=dev stop
+	docker compose -f docker/docker-compose.yaml --profile=dev rm -f
+
+build:
+	docker build -t mediastudyshelf/mediastudyshelf -f docker/Dockerfile .

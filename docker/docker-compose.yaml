@@ -9,7 +9,7 @@ services:
 
     environment:
       - "MEDIASTUDYSHELF_WATCH=1"
-      - "MEDIASTUDYSHELF_CONTENT_PATH=/var/lib/mediastudyshelf"
+      - "MEDIASTUDYSHELF_CONTENT_PATH=/var/lib/mediastudyshelf/content"
     image: python:3.14.4-trixie
     ports:
       - "8000:8000"
