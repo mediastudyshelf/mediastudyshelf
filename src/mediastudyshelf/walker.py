@@ -169,10 +169,21 @@ _get_duration = get_media_duration
 # ── Walking logic ───────────────────────────────────────────────────────────
 
 
-def _sort_key(item: tuple[int | None, str]) -> tuple[int, str]:
-    """Sort by numeric prefix first (missing prefix sorts last), then alpha."""
+def _natural_key(s: str) -> list[int | str]:
+    """Split a string into a list of str/int chunks for natural sorting."""
+    parts: list[int | str] = []
+    for piece in re.split(r"(\d+)", s):
+        if piece.isdigit():
+            parts.append(int(piece))
+        else:
+            parts.append(piece.lower())
+    return parts
+
+
+def _sort_key(item: tuple[int | None, str]) -> tuple[int, list[int | str]]:
+    """Sort by numeric prefix first (missing prefix sorts last), then natural."""
     order, name = item
-    return (order if order is not None else 9999, name)
+    return (order if order is not None else 9999, _natural_key(name))
 
 
 def walk_class(class_path: Path) -> ClassNode:
