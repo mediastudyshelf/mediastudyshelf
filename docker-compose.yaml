@@ -1,0 +1,36 @@
+services:
+  server:
+    command: |
+      bash -c "
+        apt-get update && apt-get install -y --no-install-recommends ffmpeg;
+        pip install -e ".[dev]";
+        uvicorn mediastudyshelf.main:app --host 0.0.0.0 --port 8000 --reload;
+      ";
+
+    environment:
+      - "MEDIASTUDYSHELF_WATCH=1"
+      - "MEDIASTUDYSHELF_CONTENT_PATH=/var/lib/mediastudyshelf"
+    image: python:3.14.4-trixie
+    ports:
+      - "8000:8000"
+    profiles:
+      - dev
+    volumes:
+      - ".:/usr/src/app"
+    working_dir: "/usr/src/app"
+
+  client:
+    command: |
+      bash -c "
+        cd client;
+        npm install;
+        npm run dev;
+      ";
+    image: node:25-trixie
+    ports:
+      - "5173:5173"
+    profiles:
+      - dev
+    volumes:
+      - ".:/usr/src/app"
+    working_dir: "/usr/src/app"

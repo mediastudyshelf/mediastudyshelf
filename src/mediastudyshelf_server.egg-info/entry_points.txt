@@ -1,0 +1,2 @@
+[console_scripts]
+mediastudyshelf-walker = mediastudyshelf.walker:main

@@ -1,0 +1,629 @@
+Metadata-Version: 2.4
+Name: mediastudyshelf-server
+Version: 0.1.0
+Summary: Local-first course player for video, PDF, and audio lessons
+License: AGPL-3.0-or-later
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn[standard]>=0.27
+Requires-Dist: pypdf>=4.0
+Requires-Dist: watchfiles>=0.21
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: httpx>=0.27; extra == "dev"
+Requires-Dist: ruff>=0.3; extra == "dev"
+Dynamic: license-file
+
+# MediaStudyShelf — Implementation Spec
+
+A local-first course player for video, PDF, and audio lessons. Your folder structure is the content model — no CMS, no import, no database.
+
+**Project site:** mediastudyshelf.com
+**License:** GNU Affero General Public License v3.0 (AGPLv3)
+**Stack:** Python (FastAPI) backend + React/Vite frontend
+
+---
+
+## 1. Goals & non-goals
+
+**Goals**
+- Browse courses organized as `Course → Module → Class`.
+- View each class with video and PDF side-by-side (stacked vertically), plus supporting audio and extras.
+- Serve everything from a local content folder — adding a lesson means dropping files in a folder.
+- Support multiple PDFs per lesson with a selector.
+- Stay flexible enough to extend later (metadata, progress tracking, sync), but dumb enough to work today with zero configuration.
+
+**Non-goals (for v1)**
+- User accounts, multi-user features, auth.
+- Cloud hosting, CDN, streaming transcoding.
+- Rich authoring tools inside the app — editing happens in the filesystem.
+- Video/PDF time-sync (bookmarked as a future feature, not v1).
+- Progress tracking across sessions (the right rail's `✓` on completed lessons in the mockup is aspirational — see open questions).
+
+---
+
+## 2. Content model — filesystem as source of truth
+
+### 2.1 Folder layout
+
+```
+/content
+  /01-intro-to-systems-thinking          ← Course (slug)
+    course.json                          ← optional, see §2.4
+    /01-foundations                      ← Module
+      /01-what-is-a-system                ← Class (lesson)
+        video.mp4
+        lesson-notes.pdf
+        walkthrough.mp3
+      /02-feedback-loops
+        video.mp4
+        lesson-notes.pdf
+        worksheet.pdf
+        transcript.pdf
+        walkthrough.mp3
+        q-and-a.mp3
+        resources.zip
+      /03-stocks-and-flows
+        ...
+    /02-modeling
+      ...
+```
+
+### 2.2 Ordering convention
+
+Folders are **prefixed with two-digit numbers** (`01-`, `02-`, …) for deterministic ordering. The prefix is parsed off for display — users see "What is a system?", not "01 What Is A System".
+
+- Prefix format: `^(\d{2,3})-(.+)$`
+- Display name: kebab-case converted to sentence case (`feedback-loops` → `Feedback loops`).
+- If a folder has no numeric prefix, it sorts alphabetically **after** all prefixed folders.
+
+### 2.3 File classification — by extension, no metadata required
+
+Files within a class folder are classified by extension:
+
+| Category | Extensions |
+|----------|------------|
+| Video | `.mp4`, `.webm`, `.mov` |
+| PDF / Document | `.pdf` |
+| Audio | `.mp3`, `.m4a`, `.wav`, `.ogg` |
+| Extras | everything else (`.zip`, `.txt`, `.md`, `.csv`, …) |
+
+**Primary video:** the first video file alphabetically. Multiple videos per lesson is an edge case — if it happens, the others move to Extras.
+
+**Primary PDF (default selection):** resolve in this order, stop at first match:
+1. A PDF named `lesson.pdf` or `main.pdf` (case-insensitive).
+2. The first PDF alphabetically.
+
+All PDFs remain available in the dropdown selector — "primary" only means "which one opens when the user enters the lesson." The user's active selection is per-session (see §3.5).
+
+**Audio:** all audio files are treated equally. Display name = filename without extension, converted to sentence case. First audio alphabetically is labeled "Walkthrough" only if we can't derive a better name from the filename.
+
+### 2.4 Optional metadata — `course.json`, `module.json`, `class.json`
+
+Metadata is **fully optional**. The filesystem alone produces a valid course. Metadata files at any level override derived defaults.
+
+```json
+// course.json (at the course root)
+{
+  "title": "Intro to Systems Thinking",
+  "description": "A foundations course on feedback, stocks, and leverage.",
+  "author": "Your Name",
+  "cover_image": "cover.jpg"
+}
+
+// module.json (in a module folder) — rarely needed
+{
+  "title": "Foundations"
+}
+
+// class.json (in a class folder)
+{
+  "title": "Feedback loops",
+  "primary_pdf": "worksheet.pdf",
+  "order": ["video.mp4", "worksheet.pdf", "lesson-notes.pdf", "transcript.pdf"],
+  "audio_labels": {
+    "walkthrough.mp3": "Walkthrough",
+    "q-and-a.mp3": "Q&A session"
+  }
+}
+```
+
+**Rule:** a missing metadata file is not an error. Every field is optional. The walker merges derived defaults with any overrides it finds.
+
+---
+
+## 3. UI specification
+
+The UI is a three-column layout. Widths are fixed for the side rails, main area fills the remaining space.
+
+```
+┌──────────┬────────────────────────────────┬──────────┐
+│  Course  │          Lesson header         │  Lesson  │
+│   nav    ├────────────────────────────────┤   files  │
+│  (200px) │                                │ (200px)  │
+│          │          Video player          │          │
+│          │           (240px tall)         │          │
+│          ├────────────────────────────────┤          │
+│          │                                │          │
+│          │          PDF viewer            │          │
+│          │         (fills rest)           │          │
+│          │                                │          │
+│          ├────────────────────────────────┤          │
+│          │     Prev / Next navigation     │          │
+└──────────┴────────────────────────────────┴──────────┘
+```
+
+### 3.1 Left rail — course navigation (200px wide)
+
+- **Course title** at the top: label `COURSE` (uppercase, tertiary text, 10px, 0.5px letter-spacing), then course name (13px, weight 500).
+- Below: a list of modules, each with a section header (`MODULE 1 · FOUNDATIONS`, uppercase, 10px, secondary text) followed by its classes.
+- Each class row:
+    - 12px status circle on the left:
+        - **Completed:** filled success-colored circle with a checkmark (see open question on progress tracking).
+        - **Active:** solid info-colored circle, full info-colored row background (`var(--color-background-info)`), info text color, weight 500.
+        - **Inactive:** empty circle with a 0.5px border.
+    - Class title (12px).
+- Spacing between modules: `padding: 12px 6px 4px` on the section header.
+- Background: `var(--color-background-secondary)`.
+- Right border: 0.5px solid `var(--color-border-tertiary)`.
+
+### 3.2 Main area — lesson header
+
+Padding: `0.75rem 1.125rem`. Bottom border: 0.5px tertiary.
+
+**Left side of header:**
+- Breadcrumb: `Module 1 · Foundations` (10px, tertiary text).
+- Lesson title: `1.2 Feedback loops` (14px, weight 500).
+
+**Right side of header — view toggle:**
+Three small buttons: `Split` | `Video` | `PDF`. Currently active one visually distinct (see button spec). Default: `Split`. These control whether the video+PDF stack both show or one fills the whole main area.
+
+### 3.3 Main area — video pane (top section, ~240px tall in Split view)
+
+- Fixed height: 240px in split view. In "Video" view, expands to fill available height.
+- Background: `#0a0a0a` with a subtle diagonal gradient (`linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%)`).
+- Center: play button (46px circle, 92% white fill, black play-triangle icon).
+- Top-left label: `VIDEO` (10px, uppercase, 0.5 letter-spacing, 55% white).
+- Bottom bar (9px 14px padding, dark background, 0.5px top border `rgba(255,255,255,0.08)`):
+    - Current time (`3:42`), progress bar (3px tall, white at 90% for filled portion, `rgba(255,255,255,0.15)` for track), duration (`12:34`).
+    - Time labels: 10px, `rgba(255,255,255,0.7)`.
+- Bottom border of the whole pane: 0.5px tertiary (separates from PDF pane).
+
+Use an HTML5 `<video>` element as the actual player. The mockup shows a styled poster state; the real implementation should render native controls or a minimal custom control strip matching this spec.
+
+### 3.4 Main area — PDF pane (bottom section, fills remaining height)
+
+Background: `var(--color-background-secondary)`.
+
+**PDF header bar** (`7px 14px` padding, primary background, bottom 0.5px tertiary):
+
+Contains two groups:
+
+*Left — PDF selector (dropdown):*
+- Displayed as a button: `[PDF] lesson-notes.pdf  3 of 3  ▾`
+- Padding: `4px 10px`. Background: `var(--color-background-primary)`. Border: 0.5px secondary. Radius: `var(--border-radius-md)`.
+- PDF icon: 14×14, 3px radius, `var(--color-background-danger)` bg, `var(--color-text-danger)` text, "PDF" label at 6px weight 500.
+- Filename: 11px, weight 500.
+- Counter `3 of 3`: 10px, weight 400, tertiary color. **Only shown when there are 2+ PDFs.**
+- Chevron: 10px icon, secondary color.
+- **If there's only one PDF:** show the same button structure but no chevron, no counter, and disable click. It becomes a static label.
+
+*Open state:* dropdown menu appears below the button, anchored to its left edge. 240px wide. White background, 0.5px secondary border, `var(--border-radius-md)`, subtle shadow (`0 4px 16px rgba(0,0,0,0.08)`), `z-index: 10`.
+- Each item (`7px 10px` padding, 5px radius):
+    - PDF icon (16×16), filename (11px), metadata (`8 pages · 420 KB`, 9px tertiary).
+    - Currently active item: `var(--color-background-info)` background, info text color, trailing checkmark icon on the right.
+    - Inactive items: hover-highlighted, cursor pointer.
+
+*Right — PDF viewer controls:*
+- Zoom out / zoom level / zoom in: `−` `100%` `+` (10px, secondary).
+- Separated by a 0.5px left border: page counter `3 / 8`.
+
+**PDF viewer area:**
+- Padding: `14px`.
+- Content: rendered PDF page, centered, max-width 340px, aspect ratio matches the actual page. White background, 0.5px tertiary border, 2px radius, `box-shadow: none`.
+- Use [PDF.js](https://mozilla.github.io/pdf.js/) for rendering. It's the battle-tested option and the open question about zoom/scroll behavior is answered by the library's defaults.
+
+### 3.5 Right rail — lesson files (200px wide)
+
+- Background: `var(--color-background-secondary)`.
+- Left border: 0.5px tertiary.
+- Padding: `0.875rem 0.625rem`.
+
+**Header:** `LESSON FILES` (10px uppercase, 0.5 letter-spacing, tertiary), 8px bottom margin.
+
+**Sections** (repeat for Documents, Audio, Extras — omit a section if empty):
+- Section label (10px uppercase, 0.3 letter-spacing, secondary), bottom 4px padding.
+- File rows:
+
+*Document row* (clickable — activates the PDF in the PDF pane):
+```
+[PDF icon 22×22]  filename.pdf
+                  8 pages · 420 KB
+```
+Padding `7px 8px`, 4px `border-radius-md`. Icon: `var(--color-background-danger)` bg, red text, "PDF" at 8px weight 500. Filename 11px. Metadata 9px tertiary. Text truncates with ellipsis.
+
+*Audio row:*
+```
+[▶ circle]  Walkthrough
+━━━━━━━━━━━━━━━━━━  8:14
+```
+- Circle play button (22×22): info-bg with info-text if playing, otherwise primary bg with secondary text and a 0.5px tertiary border.
+- Filename 11px weight 500.
+- Progress bar below: 2px tall, full width, filled portion in info color (or secondary if not yet played).
+- Duration label at the end: 9px tertiary.
+
+*Extras row:*
+```
+[ZIP icon]  resources.zip
+            8 files · 2.1 MB
+```
+- Icon: generic secondary background with secondary text, 0.5px tertiary border. Label = uppercase extension (ZIP, TXT, CSV, …).
+- Clicking downloads or opens the file — implementation's choice (see open question).
+
+### 3.6 Footer navigation
+
+Bottom of the main column, above the side rails' content ends. Padding: `9px 1.125rem`, top border 0.5px tertiary.
+
+- Left button: `← 1.1 What is a system?` (11px)
+- Right button: `1.3 Stocks & flows →` (11px)
+- If first class in the course: no previous button. If last: no next button.
+- Navigating wraps across module boundaries — 1.3 → 2.1, not 1.3 → 1.1.
+
+### 3.7 Design tokens
+
+The mockup uses claude.ai's design tokens. For a standalone app, inline these values (extracted from the mockup — adjust for your app's brand if you want):
+
+```css
+/* Light mode defaults */
+--color-background-primary: #ffffff;
+--color-background-secondary: #f4f2ec;
+--color-background-tertiary: #eae7dc;
+--color-background-info: #e6f1fb;
+--color-background-danger: #fcebeb;
+--color-background-success: #eaf3de;
+
+--color-text-primary: #1a1a1a;
+--color-text-secondary: #5f5e5a;
+--color-text-tertiary: #888780;
+--color-text-info: #185fa5;
+--color-text-danger: #a32d2d;
+--color-text-success: #3b6d11;
+
+--color-border-tertiary: rgba(0, 0, 0, 0.12);
+--color-border-secondary: rgba(0, 0, 0, 0.2);
+
+--border-radius-md: 8px;
+--border-radius-lg: 12px;
+
+--font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+--font-serif: Georgia, "Times New Roman", serif;
+```
+
+Dark mode is a future enhancement. If you want it, invert the `--color-background-*` and `--color-text-*` variables and keep everything else the same.
+
+### 3.8 Typography
+
+- **Font sizes:** 10px (micro labels), 11px (body small), 12px (body), 13–14px (lesson/course titles), 15px (page titles).
+- **Weights:** 400 (regular) and 500 (bold/emphasis). Never 600+ — too heavy for this UI.
+- **Case:** sentence case everywhere except section labels (uppercase with letter-spacing).
+- **No bold within sentences.** Bold is for headings and labels only.
+
+---
+
+## 4. Tech stack
+
+### Backend: Python + FastAPI
+
+**Why FastAPI:** native async support (critical for streaming large video files with range requests), automatic OpenAPI docs, Pydantic for typed response models, clean separation between routing and logic. Alternative: Starlette directly if FastAPI feels too heavy — but FastAPI's typing/validation is worth the small overhead for this app.
+
+**Python version:** 3.11 or newer. Use 3.12 if available.
+
+**Core dependencies:**
+- `fastapi` — web framework.
+- `uvicorn[standard]` — ASGI server (the `[standard]` extras include `uvloop` and `httptools` for performance, plus `watchfiles` for dev reload).
+- `pydantic` — response models (comes with FastAPI).
+- `pypdf` — PDF page counts. Pure Python, no native dependencies. (`pdfplumber` or `PyMuPDF` are alternatives if you need more; `pypdf` is enough for page counts.)
+- `python-magic` — file type detection from content, not just extension (optional but useful for Extras).
+- `watchfiles` — dev-mode filesystem watcher for auto-rewalking content directory.
+
+**External binary dependency:**
+- `ffprobe` (part of ffmpeg) — for video and audio duration extraction. Must be installed on the host system (`apt install ffmpeg` / `brew install ffmpeg`). The Python side just shells out and parses JSON output. Don't use a Python wrapper library like `ffmpeg-python` — it adds dependencies without saving much code. A simple `subprocess.run(['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', path], capture_output=True)` is enough.
+
+**Dependency management:** use `uv` if you know it (fast, modern), otherwise standard `pyproject.toml` + `pip` is fine. Avoid `poetry` and `pipenv` unless you already prefer them — they add complexity this project doesn't need.
+
+**What the server does:**
+- Walks the `/content` directory on startup, builds an in-memory tree, caches it.
+- Re-walks on filesystem changes in dev mode (via `watchfiles`), only on startup in prod.
+- Serves static media from `/content` at `/media/*` with proper HTTP range-request support. FastAPI's `FileResponse` handles ranges natively, but verify streaming behavior with a long video — range support is critical for video scrubbing and is the one thing most likely to silently break.
+- Exposes JSON API at `/api/tree`, `/api/course/{slug}`, `/api/class/{courseSlug}/{moduleSlug}/{classSlug}`.
+- CORS configured for localhost dev (frontend runs on a different port via Vite).
+
+### Frontend: React + Vite
+
+**Why React + Vite:** the UI has enough state (current class, view toggle, PDF selector dropdown, video progress, audio players) that vanilla JS would require hand-rolling patterns React gives you for free. Vite is fast, zero-config, and handles dev proxying to the Python backend cleanly.
+
+Alternative: if you prefer Vue or Svelte, either works. Don't pick React if you don't already know it — the UI isn't complex enough to justify learning a new framework.
+
+**Core dependencies:**
+- `react`, `react-dom`
+- `react-router-dom` — URL-based navigation between classes (enables deep-linking and browser back/forward).
+- `pdfjs-dist` — PDF rendering in the PDF pane. This is Mozilla's PDF.js as an npm package.
+- No UI library. Everything custom-built per the design tokens in §3.7. The UI is simple enough that component libraries would add more constraint than help.
+
+**Build tool:** Vite. Dev server proxies `/api/*` and `/media/*` requests to the Python backend at `localhost:8000`.
+
+### PDF, video, audio rendering
+
+- **PDF:** PDF.js (`pdfjs-dist`). Render each page to a `<canvas>`. PDF.js's worker loads pages asynchronously; the viewer component should handle the loading state.
+- **Video:** native HTML5 `<video>` with `preload="metadata"` and `controls` (custom controls can come later). Source points at `/media/...`.
+- **Audio:** native HTML5 `<audio>` with custom UI on top. The mini-players in the right rail show filename, progress bar, and duration.
+
+### Project structure
+
+```
+/mediastudyshelf                   ← project root (also the Python project)
+  /src
+    /mediastudyshelf               ← the importable Python package
+      __init__.py
+      main.py                      ← FastAPI app entry point
+      walker.py                    ← filesystem → tree converter
+      models.py                    ← Pydantic response models
+      media.py                     ← ffprobe + pypdf helpers
+      routes.py                    ← API endpoints
+      config.py                    ← settings (content path, dev/prod mode)
+  /tests
+    test_walker.py
+    ...
+  /client                          ← React frontend (its own subproject)
+    /src
+      /components
+        CourseNav.jsx              ← left rail
+        LessonHeader.jsx
+        VideoPane.jsx
+        PdfPane.jsx                ← includes dropdown selector
+        AssetRail.jsx              ← right rail
+        FooterNav.jsx
+      /lib
+        api.js                     ← fetch helpers, API client
+      App.jsx
+      main.jsx
+      styles.css
+    vite.config.js
+    package.json
+    index.html
+  /content                         ← user's course content (gitignored)
+  /sample-content                  ← tiny example course for testing
+  pyproject.toml                   ← at the project root
+  README.md
+  SPEC.md
+  LICENSE                          ← AGPLv3
+  .gitignore
+```
+
+**On the layout:** the project root *is* the Python project. `pyproject.toml`, `pip install -e .`, `pytest`, and `uvicorn` all run from `/mediastudyshelf`. The frontend lives inside `/client` as a separate subproject with its own `package.json` and `node_modules`. This reflects reality: Python is the primary project; the frontend is an included asset that gets built and served by the Python server.
+
+**On the `src/` layout:** the Python package lives inside `/src/mediastudyshelf/`, not directly at `/mediastudyshelf/` top-level. This is the recommended modern layout (see [PyPA's guide](https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/)). It prevents accidental imports from the working directory and forces the dev environment to match the installed state — bugs that would only show up after packaging get caught during development.
+
+**On package naming:** the importable Python package is `mediastudyshelf` (not `mediastudyshelf_server`), because the backend is the only Python component — no ambiguity in imports. The PyPI distribution name set in `pyproject.toml` is `mediastudyshelf-server`, which distinguishes the server component from the overall project when discussing releases. In code, imports read clean: `from mediastudyshelf.walker import walk`.
+
+The frontend lives in `/client` with its own dependency management. Python and JavaScript communicate over HTTP. In dev, Vite proxies requests to the Python server; in prod, the Python server serves the built frontend as static files from `/client/dist` (via FastAPI's `StaticFiles` mount).
+
+### Deployment model
+
+**Dev:** run two processes — Python server (`uvicorn mediastudyshelf.main:app --reload`) and Vite dev server (`npm run dev`). Vite proxies to Python.
+
+**Prod:** build the frontend (`npm run build`), Python server mounts the resulting `/client/dist` at `/` and serves everything from one port. Run with `uvicorn mediastudyshelf.main:app --host 0.0.0.0 --port 8000`.
+
+**Packaging later:** Docker image with Python + ffmpeg + built frontend baked in is the obvious distribution path, matching how audiobookshelf and immich ship. Out of scope for v1 but keep it in mind — don't do anything that'd make Dockerization painful.
+
+---
+
+## 5. API shape
+
+### `GET /api/tree`
+Returns the full course list with minimal info for the navigation.
+
+```json
+{
+  "courses": [
+    {
+      "slug": "intro-to-systems-thinking",
+      "title": "Intro to Systems Thinking",
+      "modules": [
+        {
+          "slug": "foundations",
+          "title": "Foundations",
+          "classes": [
+            { "slug": "what-is-a-system", "title": "What is a system?", "order": 1 },
+            { "slug": "feedback-loops",   "title": "Feedback loops",    "order": 2 },
+            { "slug": "stocks-and-flows", "title": "Stocks & flows",    "order": 3 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### `GET /api/class/{courseSlug}/{moduleSlug}/{classSlug}`
+Returns everything needed to render a class.
+
+```json
+{
+  "course":  { "slug": "intro-to-systems-thinking", "title": "Intro to Systems Thinking" },
+  "module":  { "slug": "foundations", "title": "Foundations", "number": 1 },
+  "class":   {
+    "slug": "feedback-loops",
+    "title": "Feedback loops",
+    "number": 2,
+    "video": {
+      "url": "/media/intro-to-systems-thinking/01-foundations/02-feedback-loops/video.mp4",
+      "duration_seconds": 754
+    },
+    "pdfs": [
+      {
+        "filename": "lesson-notes.pdf",
+        "url": "/media/.../lesson-notes.pdf",
+        "pages": 8,
+        "size_bytes": 430080,
+        "is_primary": true
+      },
+      {
+        "filename": "worksheet.pdf",
+        "url": "/media/.../worksheet.pdf",
+        "pages": 2,
+        "size_bytes": 184320,
+        "is_primary": false
+      }
+    ],
+    "audio": [
+      {
+        "filename": "walkthrough.mp3",
+        "label": "Walkthrough",
+        "url": "/media/.../walkthrough.mp3",
+        "duration_seconds": 1100
+      }
+    ],
+    "extras": [
+      {
+        "filename": "resources.zip",
+        "url": "/media/.../resources.zip",
+        "size_bytes": 2202009
+      }
+    ]
+  },
+  "nav": {
+    "prev": { "course": "...", "module": "foundations", "class": "what-is-a-system", "title": "What is a system?" },
+    "next": { "course": "...", "module": "foundations", "class": "stocks-and-flows", "title": "Stocks & flows" }
+  }
+}
+```
+
+**PDF page counts and media durations:** derive server-side at walk time. Use `pypdf` for page counts; use `ffprobe` (shelled out via `subprocess`) for video and audio durations. Cache results in memory — these don't need to be re-read on every request. In dev, the filesystem watcher invalidates the cache for changed paths; in prod, the cache lives for the lifetime of the process.
+
+---
+
+## 6. Implementation order
+
+Suggested sequence, each step verifiable before moving on. The first few steps are backend-only — don't start on the UI until the API is solid.
+
+1. **Project scaffold.** At the project root, create `pyproject.toml` and `/src/mediastudyshelf/` with a minimal FastAPI app in `main.py` that responds to `GET /health`. Install editable: `pip install -e .[dev]` from the project root. Confirm `uvicorn mediastudyshelf.main:app --reload` runs.
+2. **Content walker.** Walk a sample `/sample-content` folder, build the tree as plain Python dataclasses or dicts, print it. No API yet — run it as a CLI: `python -m mediastudyshelf.walker ./sample-content`.
+3. **`/api/tree` endpoint.** Wire the walker into FastAPI. Return Pydantic-modeled JSON. Test with `curl http://localhost:8000/api/tree`.
+4. **Static media serving.** Mount `/content` at `/media/*` using FastAPI's `StaticFiles`. Verify a `curl -I` on a video URL returns `Accept-Ranges: bytes`. Verify range requests work with `curl -H "Range: bytes=0-1023"`.
+5. **Enrich the walker.** Add `pypdf` for page counts, `ffprobe` for video and audio durations. Cache results keyed by file path + mtime.
+6. **`/api/class/...` endpoint.** Returns the full class payload per §5. Include `prev`/`next` navigation resolution.
+7. **Dev-mode filesystem watcher.** Using `watchfiles`, invalidate cached tree entries when files change under `/content`. Only enabled when `--reload` is set or via env var.
+8. **Client scaffold.** Vite + React project in `/client`. Configure dev proxy to forward `/api/*` and `/media/*` to `localhost:8000`. Base three-column layout with hardcoded content first, then wire up to the API.
+9. **Left rail.** Course nav, module sections, class rows with active state. Use `react-router-dom` for URL-based class selection (`/course/{courseSlug}/{moduleSlug}/{classSlug}`).
+10. **Video pane.** Native `<video>` pointing at `/media/...`. Confirm scrubbing works end-to-end — this tests range-request handling.
+11. **PDF pane.** PDF.js rendering via `pdfjs-dist`, page navigation, zoom controls.
+12. **PDF selector dropdown.** Multi-PDF lessons, active state, counter logic (hidden when only one PDF).
+13. **Right rail.** Documents, audio (with inline mini-players), extras.
+14. **Footer navigation.** Prev/next with cross-module wrapping.
+15. **View toggle.** Split / Video only / PDF only.
+16. **Prod build path.** Vite builds to `/client/dist`, FastAPI serves it as static files when a `SERVE_FRONTEND=1` env var is set. Single-command prod deployment.
+17. **Polish.** Loading states, empty states (lesson with no video, lesson with no PDFs), error handling for missing files, 404 pages.
+
+---
+
+## 7. Open questions (decide before or during implementation)
+
+These came up during design but don't block starting. Worth answering before polishing.
+
+**Progress tracking.** The left rail shows completed lessons with a checkmark (`1.1 What is a system? ✓`). Where does this state live?
+- *Option A — off for v1.* All lessons show empty circles. Remove the completed state from the mockup.
+- *Option B — localStorage.* Track "viewed" status per class. Simple, per-browser, good enough for a personal app.
+- *Option C — a `progress.json` in the content folder.* Portable across machines if you sync the content folder.
+
+Recommendation: **B** for v1. Upgrade to C if you end up using this on multiple machines.
+
+**PDF state persistence per class.** If I'm on lesson 1.2 viewing `transcript.pdf`, then navigate to 1.3 and back — does 1.2 remember transcript, or reset to the primary PDF?
+- Recommendation: **reset to primary.** Simpler mental model, avoids surprise. Use a URL query param (`?pdf=transcript.pdf`) if you want deep-linking.
+
+**Split divider.** Should the video/PDF split be draggable (user drags the boundary to favor one pane)?
+- Recommendation: **not in v1.** Fixed 240px video height. Add if it bugs you.
+
+**Extras click behavior.** Does clicking `resources.zip` download it or open in a new tab?
+- Recommendation: **download** for archives, **open in new tab** for everything else. Or: always download, with a "copy link" option.
+
+**Video + PDF sync.** Timestamps in the video that auto-flip PDF pages.
+- Recommendation: **out of scope for v1.** If you add it later, it's a `class.json` field: `"pdf_sync": [{ "time": 180, "pdf": "lesson-notes.pdf", "page": 3 }]`.
+
+**Watcher behavior.** Does the server live-reload when files change in `/content`?
+- Recommendation: **yes in dev** (via `watchfiles`), **no in prod** (walk on startup only). Makes adding a new lesson feel instant during development. Gate behind an env var (`WATCH_CONTENT=1`) or the `--reload` flag so prod deploys don't waste cycles watching.
+
+**Windows path handling.** If you're on Windows, the walker needs to handle backslashes and the URL layer needs to always use forward slashes.
+
+---
+
+## 8. Getting started
+
+Once Claude Code picks this up:
+
+1. Confirm the content model with a sample folder under `/sample-content`. Even one course with one module and two classes is enough to validate the walker.
+2. Scaffold the Python package at `/src/mediastudyshelf/` with FastAPI and get `uvicorn mediastudyshelf.main:app --reload` serving `GET /health`.
+3. Build the walker as a standalone module, then add a CLI entrypoint so you can test it in isolation: `python -m mediastudyshelf.walker ./sample-content` should print the tree.
+4. Only once `/api/tree` returns clean JSON and static media serves with range support, start on the frontend.
+
+The UI mockup this spec is based on uses claude.ai's design system — the CSS tokens in §3.7 are a good starting approximation, but you'll want to iterate on spacing and color once you see it in your own browser. Don't treat the pixel values as gospel; treat the layout hierarchy and component behavior as the contract.
+
+### Minimal `pyproject.toml` starting point
+
+```toml
+[project]
+name = "mediastudyshelf-server"
+version = "0.1.0"
+description = "Local-first course player for video, PDF, and audio lessons"
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pypdf>=4.0",
+  "watchfiles>=0.21",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "httpx>=0.27",   # for FastAPI TestClient
+  "ruff>=0.3",
+]
+
+[project.scripts]
+# CLI entrypoint for testing the walker in isolation:
+# `mediastudyshelf-walker ./sample-content`
+mediastudyshelf-walker = "mediastudyshelf.walker:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+```
+
+The `[tool.setuptools.packages.find]` section tells setuptools that packages live under `src/`. This is what makes the `src/` layout work — without it, setuptools would look for the package at the project root and fail to find it.
+
+**On the choice of `pyproject.toml` over `setup.py`:** `pyproject.toml` is the modern standard (PEP 621, widely adopted since 2021) and is what all current Python tooling expects. `setup.py` is legacy — it still works but it scatters configuration across multiple files, runs arbitrary code at install time, and is explicitly discouraged by setuptools' own documentation for new projects. Use pyproject.
+
+### Runtime prerequisites
+
+- **Python 3.11+**
+- **ffmpeg** installed on the host (provides `ffprobe`). The app will fail loudly at startup if `ffprobe` isn't on the `PATH`.
+- **Node.js 20+** for the frontend build.
+
+---
+
+*End of spec. Questions, edits, or missing details: come back to this file and add them — it's a living doc.*
