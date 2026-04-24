@@ -30,5 +30,5 @@ def serve_frontend() -> bool:
 
 
 def get_frontend_dist() -> Path:
-    """Return the path to the built frontend dist directory."""
-    return Path(__file__).resolve().parent.parent.parent / "client" / "dist"
+    """Return the path to the public directory (sibling of src)."""
+    return Path(__file__).resolve().parent.parent.parent / "public"
