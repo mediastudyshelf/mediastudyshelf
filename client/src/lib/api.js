@@ -29,3 +29,25 @@ export async function fetchClass(courseSlug, moduleSlug, classSlug) {
   if (!resp.ok) throw new ApiError(resp.status, `Failed to fetch class: ${resp.status}`);
   return resp.json();
 }
+
+export async function prepareHls(videoUrl) {
+  const resp = await fetch('/api/hls/prepare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_url: videoUrl }),
+  });
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
+export async function heartbeatHls(id, time) {
+  try {
+    await fetch(`/api/hls/${id}/heartbeat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ time }),
+    });
+  } catch {
+    // best-effort
+  }
+}

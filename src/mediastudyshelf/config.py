@@ -29,6 +29,15 @@ def serve_frontend() -> bool:
     return os.environ.get("SERVE_FRONTEND", "").strip() == "1"
 
 
+def get_hls_cache_path() -> Path:
+    """Return the resolved HLS cache directory path.
+
+    Reads from MEDIASTUDYSHELF_HLS_CACHE, defaulting to /tmp/mediastudyshelf-hls.
+    """
+    raw = os.environ.get("MEDIASTUDYSHELF_HLS_CACHE", "/tmp/mediastudyshelf-hls")
+    return Path(raw).resolve()
+
+
 def get_frontend_dist() -> Path:
     """Return the path to the public directory (sibling of src)."""
     return Path(__file__).resolve().parent.parent.parent / "public"

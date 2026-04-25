@@ -1,11 +1,75 @@
 import { useRef, useEffect, useState } from 'react';
+import Hls from 'hls.js';
+import { prepareHls, heartbeatHls } from '../lib/api';
+
+const HEARTBEAT_INTERVAL = 5_000; // 5 seconds — frequent enough for buffer management
 
 export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expanded, hidden, height }) {
   const videoRef = useRef(null);
+  const hlsRef = useRef(null);
+  const sessionIdRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const activeVideo = videos?.find(v => v.url === activeVideoUrl) || videos?.[0];
+  const mediaUrl = activeVideo?.url;
+
+  // Request HLS, attach player, run heartbeat with playhead
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !mediaUrl) return;
+
+    let cancelled = false;
+    let heartbeatTimer = null;
+
+    // Tear down previous HLS instance and reset video element
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    sessionIdRef.current = null;
+    el.removeAttribute('src');
+    el.load();
+    el.currentTime = 0;
+
+    prepareHls(mediaUrl).then(result => {
+      if (cancelled) return;
+
+      if (!result) {
+        el.src = mediaUrl;
+        return;
+      }
+
+      sessionIdRef.current = result.id;
+
+      // Heartbeat sends current playhead position
+      heartbeatTimer = setInterval(() => {
+        const currentTime = el.currentTime || 0;
+        heartbeatHls(result.id, currentTime);
+      }, HEARTBEAT_INTERVAL);
+
+      if (Hls.isSupported()) {
+        const hls = new Hls({ startPosition: 0 });
+        hlsRef.current = hls;
+        hls.loadSource(result.url);
+        hls.attachMedia(el);
+      } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
+        el.src = result.url;
+      } else {
+        el.src = mediaUrl;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      sessionIdRef.current = null;
+    };
+  }, [mediaUrl]);
 
   // Pause video when hidden
   useEffect(() => {
@@ -84,7 +148,6 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
       <video
         ref={videoRef}
         className="video-pane__player"
-        src={activeVideo?.url}
         controls
         preload="metadata"
       />
