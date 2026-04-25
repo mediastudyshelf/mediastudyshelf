@@ -21,6 +21,7 @@ export default function App() {
   const [classError, setClassError] = useState(null);
 
   const [viewMode, setViewMode] = useState('split');
+  const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const [activePdfUrl, setActivePdfUrl] = useState(null);
   const [playingAudioUrl, setPlayingAudioUrl] = useState(null);
 
@@ -55,9 +56,11 @@ export default function App() {
       .then(data => {
         setClassData(data);
         setClassError(null);
+        const primaryVideo = data.class.videos.find(v => v.is_primary);
+        setActiveVideoUrl(primaryVideo?.url || data.class.videos[0]?.url || null);
         const primary = data.class.pdfs.find(p => p.is_primary);
         setActivePdfUrl(primary?.url || data.class.pdfs[0]?.url || null);
-        if (!data.class.video) {
+        if (!data.class.videos.length) {
           setViewMode('pdf');
         } else if (!data.class.pdfs.length) {
           setViewMode('video');
@@ -134,7 +137,7 @@ export default function App() {
     </div>
   ) : null;
 
-  const videoUrl = classData?.class?.video?.url || null;
+  const videos = classData?.class?.videos || [];
   const pdfs = classData?.class?.pdfs || [];
   const showVideo = viewMode !== 'pdf';
   const showPdf = viewMode !== 'video';
@@ -161,7 +164,9 @@ export default function App() {
           <>
             <div className="main-content">
               <VideoPane
-                videoUrl={videoUrl}
+                videos={videos}
+                activeVideoUrl={activeVideoUrl}
+                onVideoSelect={setActiveVideoUrl}
                 expanded={viewMode === 'video'}
                 hidden={!showVideo}
               />

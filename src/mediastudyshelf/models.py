@@ -43,8 +43,10 @@ class ModuleRef(BaseModel):
 
 
 class VideoDetail(BaseModel):
+    filename: str
     url: str
     duration_seconds: int | None
+    is_primary: bool
 
 
 class PdfDetail(BaseModel):
@@ -84,7 +86,7 @@ class ClassDetail(BaseModel):
     slug: str
     title: str
     number: int
-    video: VideoDetail | None
+    videos: list[VideoDetail]
     pdfs: list[PdfDetail]
     audio: list[AudioDetail]
     extras: list[ExtraDetail]

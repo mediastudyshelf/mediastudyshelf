@@ -90,7 +90,7 @@ class ClassNode:
     title: str
     order: int | None
     path: Path
-    video: FileEntry | None = None
+    videos: list[FileEntry] = field(default_factory=list)
     pdfs: list[FileEntry] = field(default_factory=list)
     audio: list[FileEntry] = field(default_factory=list)
     extras: list[FileEntry] = field(default_factory=list)
@@ -226,11 +226,9 @@ def walk_class(class_path: Path) -> ClassNode:
         else:
             extras.append(fe)
 
-    # Primary video = first alphabetically; rest go to extras
-    primary_video = videos[0] if videos else None
-    for v in videos[1:]:
-        v.category = "extra"
-        extras.append(v)
+    # Primary video = first alphabetically
+    if videos:
+        videos[0].is_primary = True
 
     _resolve_primary_pdf(pdfs, metadata)
 
@@ -245,7 +243,7 @@ def walk_class(class_path: Path) -> ClassNode:
         title=title,
         order=order,
         path=class_path,
-        video=primary_video,
+        videos=videos,
         pdfs=pdfs,
         audio=audio,
         extras=extras,
@@ -319,9 +317,10 @@ def print_tree(courses: list[CourseNode]) -> None:
             print(f"  Module {mi}: {module.title} [{module.slug}]")
             for ci, cls in enumerate(module.classes, 1):
                 print(f"    {mi}.{ci} {cls.title} [{cls.slug}]")
-                if cls.video:
-                    dur = f", {cls.video.duration_seconds}s" if cls.video.duration_seconds else ""
-                    print(f"        Video: {cls.video.filename} ({cls.video.size_bytes} bytes{dur})")
+                for vid in cls.videos:
+                    primary = " [PRIMARY]" if vid.is_primary else ""
+                    dur = f", {vid.duration_seconds}s" if vid.duration_seconds else ""
+                    print(f"        Video: {vid.filename} ({vid.size_bytes} bytes{dur}){primary}")
                 if cls.pdfs:
                     for pdf in cls.pdfs:
                         primary = " [PRIMARY]" if pdf.is_primary else ""

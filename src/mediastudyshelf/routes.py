@@ -146,12 +146,15 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
     module, module_number = _find_module(course, module_slug)
     cls, class_number = _find_class(module, class_slug)
 
-    video = None
-    if cls.video:
-        video = VideoDetail(
-            url=_media_url(cls.video.path),
-            duration_seconds=cls.video.duration_seconds,
+    videos = [
+        VideoDetail(
+            filename=v.filename,
+            url=_media_url(v.path),
+            duration_seconds=v.duration_seconds,
+            is_primary=v.is_primary,
         )
+        for v in cls.videos
+    ]
 
     pdfs = [
         PdfDetail(
@@ -192,7 +195,7 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
             slug=cls.slug,
             title=cls.title,
             number=class_number,
-            video=video,
+            videos=videos,
             pdfs=pdfs,
             audio=audio,
             extras=extras,
