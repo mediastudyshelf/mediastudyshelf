@@ -17,6 +17,7 @@ export default function PdfPane({ pdfs, activePdfUrl, onPdfSelect, expanded, hid
   const activePdf = pdfs?.find(p => p.url === activePdfUrl) || pdfs?.[0];
 
   const canvasRef = useRef(null);
+  const viewerRef = useRef(null);
   const pdfDocRef = useRef(null);
   const renderTaskRef = useRef(null);
   const loadingUrlRef = useRef(null);
@@ -77,6 +78,8 @@ export default function PdfPane({ pdfs, activePdfUrl, onPdfSelect, expanded, hid
       renderTaskRef.current.cancel();
       renderTaskRef.current = null;
     }
+
+    if (viewerRef.current) viewerRef.current.scrollTop = 0;
 
     doc.getPage(currentPage).then(page => {
       const scale = zoom / 100;
@@ -230,7 +233,7 @@ export default function PdfPane({ pdfs, activePdfUrl, onPdfSelect, expanded, hid
           </div>
         </div>
       </div>
-      <div className="pdf-viewer">
+      <div className="pdf-viewer" ref={viewerRef}>
         <canvas ref={canvasRef} className="pdf-viewer__canvas" />
       </div>
     </div>
