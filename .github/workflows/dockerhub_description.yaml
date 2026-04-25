@@ -1,0 +1,62 @@
+name: Update Docker Hub Description
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'docs/DOCKERHUB.md'
+  workflow_dispatch:
+
+jobs:
+  update-description:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update Docker Hub Description
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          REPO: mediastudyshelf/mediastudyshelf
+          SHORT_DESC: "Self-hosted learning tool for courses and lessons"
+        run: |
+          set -euo pipefail
+
+          # 1. Build login payload safely (jq escapes special chars in password)
+          LOGIN_PAYLOAD=$(jq -n \
+            --arg u "$DOCKER_USERNAME" \
+            --arg p "$DOCKER_PASSWORD" \
+            '{username: $u, password: $p}')
+
+          # 2. Get JWT
+          TOKEN=$(curl -sS -f -X POST \
+            -H "Content-Type: application/json" \
+            -d "$LOGIN_PAYLOAD" \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
+
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "Login failed"; exit 1
+          fi
+
+          # 3. Build PATCH body from docs/DOCKERHUB.md + short description
+          BODY=$(jq -n \
+            --rawfile readme docs/DOCKERHUB.md \
+            --arg short "$SHORT_DESC" \
+            '{full_description: $readme, description: $short}')
+
+          # 4. PATCH the repo (note trailing slash)
+          HTTP_CODE=$(curl -sS -X PATCH \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            -o /tmp/response.json \
+            -w "%{http_code}" \
+            "https://hub.docker.com/v2/repositories/$REPO/")
+
+          echo "HTTP $HTTP_CODE"
+          cat /tmp/response.json
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            exit 1
+          fi
