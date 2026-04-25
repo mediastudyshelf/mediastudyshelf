@@ -138,8 +138,10 @@ export default function App() {
     </div>
   ) : null;
 
-  const [videoHeight, setVideoHeight] = useState(240);
+  const [videoHeight, setVideoHeight] = useState(null);
   const contentRef = useRef(null);
+
+  const effectiveHeight = videoHeight ?? (contentRef.current ? Math.round(contentRef.current.getBoundingClientRect().height / 3) : 240);
 
   const handleDividerDrag = useCallback((clientY) => {
     const el = contentRef.current;
@@ -182,7 +184,7 @@ export default function App() {
                 onVideoSelect={setActiveVideoUrl}
                 expanded={viewMode === 'video'}
                 hidden={!showVideo}
-                height={isSplit ? videoHeight : undefined}
+                height={isSplit ? effectiveHeight : undefined}
               />
               {isSplit && <SplitDivider onDrag={handleDividerDrag} />}
               {classData && (
