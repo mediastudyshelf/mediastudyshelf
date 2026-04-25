@@ -167,10 +167,8 @@ html, body, #root {
 
 .video-pane {
   position: relative;
-  height: 240px;
   flex-shrink: 0;
   background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
-  border-bottom: 0.5px solid var(--color-border-tertiary);
 }
 
 .video-pane--expanded {
@@ -304,6 +302,32 @@ html, body, #root {
   height: 100%;
   color: rgba(255, 255, 255, 0.4);
   font-size: 11px;
+}
+
+/* ── Split divider ───────────────────────────────────────────── */
+
+.split-divider {
+  flex-shrink: 0;
+  height: 6px;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-background-secondary);
+  border-top: 0.5px solid var(--color-border-tertiary);
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+  transition: background 0.1s ease;
+}
+
+.split-divider:hover {
+  background: var(--color-background-tertiary);
+}
+
+.split-divider__handle {
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-border-secondary);
 }
 
 /* ── PDF pane ────────────────────────────────────────────────── */

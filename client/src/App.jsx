@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetchTree, fetchClass } from './lib/api';
 import CourseNav from './components/CourseNav';
 import LessonHeader from './components/LessonHeader';
 import VideoPane from './components/VideoPane';
+import SplitDivider from './components/SplitDivider';
 import PdfPane from './components/PdfPane';
 import FooterNav from './components/FooterNav';
 import AssetRail from './components/AssetRail';
@@ -137,10 +138,22 @@ export default function App() {
     </div>
   ) : null;
 
+  const [videoHeight, setVideoHeight] = useState(240);
+  const contentRef = useRef(null);
+
+  const handleDividerDrag = useCallback((clientY) => {
+    const el = contentRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const newHeight = Math.max(100, Math.min(clientY - rect.top, rect.height - 100));
+    setVideoHeight(newHeight);
+  }, []);
+
   const videos = classData?.class?.videos || [];
   const pdfs = classData?.class?.pdfs || [];
   const showVideo = viewMode !== 'pdf';
   const showPdf = viewMode !== 'video';
+  const isSplit = showVideo && showPdf;
 
   return (
     <div className="app-layout">
@@ -162,14 +175,16 @@ export default function App() {
         />
         {mainContent || (
           <>
-            <div className="main-content">
+            <div className="main-content" ref={contentRef}>
               <VideoPane
                 videos={videos}
                 activeVideoUrl={activeVideoUrl}
                 onVideoSelect={setActiveVideoUrl}
                 expanded={viewMode === 'video'}
                 hidden={!showVideo}
+                height={isSplit ? videoHeight : undefined}
               />
+              {isSplit && <SplitDivider onDrag={handleDividerDrag} />}
               {classData && (
                 <PdfPane
                   pdfs={pdfs}

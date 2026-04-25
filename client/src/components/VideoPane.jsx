@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 
-export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expanded, hidden }) {
+export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expanded, hidden, height }) {
   const videoRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -32,9 +32,11 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
     hidden && 'video-pane--hidden',
   ].filter(Boolean).join(' ');
 
+  const style = height && !expanded && !hidden ? { height } : undefined;
+
   if (!videos || videos.length === 0) {
     return (
-      <div className={className}>
+      <div className={className} style={style}>
         <span className="video-pane__label">VIDEO</span>
         <div className="video-pane__empty">No video available</div>
       </div>
@@ -45,7 +47,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
   const activeIndex = videos.findIndex(v => v.url === activeVideoUrl) + 1;
 
   return (
-    <div className={className}>
+    <div className={className} style={style}>
       <div className="video-pane__header">
         <span className="video-pane__label">VIDEO</span>
         {hasMultiple && (
