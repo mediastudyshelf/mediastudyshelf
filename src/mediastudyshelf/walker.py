@@ -17,7 +17,7 @@ from typing import Any
 
 # ── File classification by extension ────────────────────────────────────────
 
-VIDEO_EXTS = {".mp4", ".webm", ".mov"}
+VIDEO_EXTS = {".mp4", ".webm", ".mov", ".ts", ".mkv", ".avi"}
 PDF_EXTS = {".pdf"}
 AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".ogg"}
 

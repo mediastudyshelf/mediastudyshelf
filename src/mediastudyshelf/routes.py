@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from mediastudyshelf.models import (
     AudioDetail,
@@ -202,3 +203,48 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
         ),
         nav=nav,
     )
+
+
+# ── /api/hls ──────────────────────────────────────────────────────────────
+
+
+class HlsPrepareRequest(BaseModel):
+    video_url: str  # /media/... path
+
+
+class HlsPrepareResponse(BaseModel):
+    url: str
+    id: str
+
+
+class HlsHeartbeatRequest(BaseModel):
+    time: float  # playhead position in seconds
+
+
+@router.post("/hls/prepare", response_model=HlsPrepareResponse)
+async def hls_prepare(body: HlsPrepareRequest):
+    """Create an HLS streaming session for a video."""
+    from mediastudyshelf.hls import get_manager
+
+    if not body.video_url.startswith("/media/"):
+        raise HTTPException(status_code=400, detail="Invalid video URL")
+    rel = body.video_url[len("/media/"):]
+    video_path = _content_root / rel
+
+    if not video_path.is_file():
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    session_id, url = get_manager().create(video_path)
+    return HlsPrepareResponse(url=url, id=session_id)
+
+
+@router.post("/hls/{session_id}/heartbeat")
+async def hls_heartbeat(session_id: str, body: HlsHeartbeatRequest):
+    """Report playhead position and keep session alive."""
+    from mediastudyshelf.hls import get_manager
+
+    if not get_manager().heartbeat(session_id, body.time):
+        raise HTTPException(status_code=404, detail="HLS session not found")
+    return {"status": "ok"}
+
+

@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://server:8000',
       '/media': 'http://server:8000',
+      '/hls': 'http://server:8000',
     },
   },
 })
