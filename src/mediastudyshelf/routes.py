@@ -224,6 +224,7 @@ class HlsHeartbeatRequest(BaseModel):
 @router.post("/hls/prepare", response_model=HlsPrepareResponse)
 async def hls_prepare(body: HlsPrepareRequest):
     """Create an HLS streaming session for a video."""
+    import asyncio
     from mediastudyshelf.hls import get_manager
 
     if not body.video_url.startswith("/media/"):
@@ -234,7 +235,7 @@ async def hls_prepare(body: HlsPrepareRequest):
     if not video_path.is_file():
         raise HTTPException(status_code=404, detail="Video file not found")
 
-    session_id, url = get_manager().create(video_path)
+    session_id, url = await asyncio.to_thread(get_manager().create, video_path)
     return HlsPrepareResponse(url=url, id=session_id)
 
 
