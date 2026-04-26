@@ -25,13 +25,17 @@ export default function PdfPane({ pdfs, activePdfUrl, onPdfSelect, expanded, hid
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [docRevision, setDocRevision] = useState(0);
   const [zoom, setZoom] = useState(100);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Load PDF document when active PDF changes
   useEffect(() => {
     if (!activePdf) {
-      pdfDocRef.current = null;
+      if (pdfDocRef.current) {
+        pdfDocRef.current.destroy();
+        pdfDocRef.current = null;
+      }
       setTotalPages(0);
       setCurrentPage(1);
       return;
@@ -39,36 +43,41 @@ export default function PdfPane({ pdfs, activePdfUrl, onPdfSelect, expanded, hid
 
     const url = activePdf.url;
     loadingUrlRef.current = url;
+    let cancelled = false;
 
     if (renderTaskRef.current) {
       renderTaskRef.current.cancel();
       renderTaskRef.current = null;
     }
 
+    // Destroy previous document before loading new one
+    if (pdfDocRef.current) {
+      pdfDocRef.current.destroy();
+      pdfDocRef.current = null;
+    }
+
     const loadTask = pdfjsLib.getDocument(url);
     loadTask.promise.then(doc => {
-      if (loadingUrlRef.current !== url) {
+      if (cancelled || loadingUrlRef.current !== url) {
         doc.destroy();
         return;
-      }
-      if (pdfDocRef.current) {
-        pdfDocRef.current.destroy();
       }
       pdfDocRef.current = doc;
       setTotalPages(doc.numPages);
       setCurrentPage(1);
+      setDocRevision(r => r + 1);
     }).catch(err => {
-      if (err.name !== 'RenderingCancelledException') {
+      if (err.name !== 'RenderingCancelledException' && !cancelled) {
         console.error('PDF load failed:', err);
       }
     });
 
     return () => {
-      loadTask.destroy();
+      cancelled = true;
     };
   }, [activePdf?.url]);
 
-  // Render the current page
+  // Render the current page (re-renders when PDF document or page changes)
   useEffect(() => {
     const doc = pdfDocRef.current;
     const canvas = canvasRef.current;
@@ -100,7 +109,7 @@ export default function PdfPane({ pdfs, activePdfUrl, onPdfSelect, expanded, hid
         }
       });
     });
-  }, [currentPage, zoom, totalPages]);
+  }, [currentPage, zoom, totalPages, docRevision]);
 
   // Keyboard: page nav + Escape to close menu
   const handleKeyDown = useCallback((e) => {
