@@ -30,11 +30,12 @@ export async function fetchClass(courseSlug, moduleSlug, classSlug) {
   return resp.json();
 }
 
-export async function prepareHls(videoUrl) {
+export async function prepareHls(videoUrl, signal) {
   const resp = await fetch('/api/hls/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ video_url: videoUrl }),
+    signal,
   });
   if (!resp.ok) return null;
   return resp.json();

@@ -20,7 +20,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
     const el = videoRef.current;
     if (!el || !mediaUrl) return;
 
-    let cancelled = false;
+    const abortController = new AbortController();
     let heartbeatTimer = null;
     setLoading(true);
 
@@ -34,8 +34,8 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
     el.load();
     el.currentTime = 0;
 
-    prepareHls(mediaUrl).then(result => {
-      if (cancelled) return;
+    prepareHls(mediaUrl, abortController.signal).then(result => {
+      if (abortController.signal.aborted) return;
 
       if (!result) {
         el.src = mediaUrl;
@@ -57,7 +57,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
         hls.loadSource(result.url);
         hls.attachMedia(el);
         hls.on(Hls.Events.FRAG_BUFFERED, () => {
-          if (!cancelled) setLoading(false);
+          if (!abortController.signal.aborted) setLoading(false);
         });
       } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
         el.src = result.url;
@@ -66,10 +66,10 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
         el.src = mediaUrl;
         setLoading(false);
       }
-    });
+    }).catch(() => {});
 
     return () => {
-      cancelled = true;
+      abortController.abort();
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (hlsRef.current) {
         hlsRef.current.destroy();
