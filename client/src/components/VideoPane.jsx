@@ -13,6 +13,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
 
   const activeVideo = videos?.find(v => v.url === activeVideoUrl) || videos?.[0];
   const mediaUrl = activeVideo?.url;
+  const [loading, setLoading] = useState(true);
 
   // Request HLS, attach player, run heartbeat with playhead
   useEffect(() => {
@@ -21,6 +22,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
 
     let cancelled = false;
     let heartbeatTimer = null;
+    setLoading(true);
 
     // Tear down previous HLS instance and reset video element
     if (hlsRef.current) {
@@ -37,6 +39,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
 
       if (!result) {
         el.src = mediaUrl;
+        setLoading(false);
         return;
       }
 
@@ -53,10 +56,15 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
         hlsRef.current = hls;
         hls.loadSource(result.url);
         hls.attachMedia(el);
+        hls.on(Hls.Events.FRAG_BUFFERED, () => {
+          if (!cancelled) setLoading(false);
+        });
       } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
         el.src = result.url;
+        el.addEventListener('canplay', () => setLoading(false), { once: true });
       } else {
         el.src = mediaUrl;
+        setLoading(false);
       }
     });
 
@@ -145,11 +153,18 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
           </div>
         )}
       </div>
+      {loading && (
+        <div className="video-pane__loading">
+          <div className="video-pane__spinner" />
+          <span>Preparing video...</span>
+        </div>
+      )}
       <video
         ref={videoRef}
         className="video-pane__player"
         controls
         preload="metadata"
+        style={loading ? { display: 'none' } : undefined}
       />
     </div>
   );

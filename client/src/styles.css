@@ -304,6 +304,32 @@ html, body, #root {
   font-size: 11px;
 }
 
+.video-pane__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  z-index: 1;
+}
+
+.video-pane__spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  animation: video-spin 0.8s linear infinite;
+}
+
+@keyframes video-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ── Split divider ───────────────────────────────────────────── */
 
 .split-divider {
