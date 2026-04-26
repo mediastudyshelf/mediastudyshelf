@@ -4,47 +4,83 @@ A local-first learning tool for video, PDF and audio lessons. Your folder struct
 
 ![Lesson view](images/lesson-page.svg)
 
-## Prerequisites
+## Quick Start with Docker
 
-- Python 3.11+
-- Node.js 20.19+
-- ffmpeg (provides `ffprobe` for media duration extraction)
+The easiest way to run MediaStudyShelf is with the pre-built image from [Docker Hub](https://hub.docker.com/r/mediastudyshelf/mediastudyshelf).
 
-## Setup
+### Using Docker Compose
 
-```bash
-# Install Python package (editable, with dev dependencies)
-pip install -e ".[dev]"
+Create a `docker-compose.yaml`:
 
-# Install frontend dependencies
-cd client && npm install && cd ..
+```yaml
+services:
+  mediastudyshelf:
+    image: mediastudyshelf/mediastudyshelf
+    ports:
+      - "8000:8000"
+    volumes:
+      - /path/to/your/content:/content:ro
+    environment:
+      - MEDIASTUDYSHELF_CONTENT_PATH=/content
+      - SERVE_FRONTEND=1
+    restart: unless-stopped
 ```
 
-## Development
-
-Run two processes in separate terminals:
-
 ```bash
-# Terminal 1: Python backend
-MEDIASTUDYSHELF_WATCH=1 uvicorn mediastudyshelf.main:app --reload
-
-# Terminal 2: Vite dev server (proxies /api and /media to :8000)
-cd client && npm run dev
-```
-
-Open the Vite URL (typically http://localhost:5173).
-
-## Production
-
-```bash
-# Build the frontend
-cd client && npm run build && cd ..
-
-# Run everything from one server
-SERVE_FRONTEND=1 uvicorn mediastudyshelf.main:app --host 0.0.0.0 --port 8000
+docker compose up -d
 ```
 
 Open http://localhost:8000.
+
+### Using Docker directly
+
+```bash
+docker run -d \
+  -p 8000:8000 \
+  -v /path/to/your/content:/content:ro \
+  -e MEDIASTUDYSHELF_CONTENT_PATH=/content \
+  -e SERVE_FRONTEND=1 \
+  mediastudyshelf/mediastudyshelf
+```
+
+Replace `/path/to/your/content` with the path to your course folders.
+
+---
+
+## Development
+
+### With Docker (recommended)
+
+```bash
+make up     # starts backend + frontend with hot reload
+make down   # stops and removes containers
+```
+
+Open http://localhost:5173.
+
+### Bare-metal
+
+```bash
+# Terminal 1: Python backend (requires Python 3.11+, ffmpeg)
+pip install -e ".[dev]"
+MEDIASTUDYSHELF_WATCH=1 uvicorn mediastudyshelf.main:app --reload
+
+# Terminal 2: Vite dev server (requires Node.js 20+)
+cd client && npm install && npm run dev
+```
+
+Open http://localhost:5173.
+
+### Production build
+
+```bash
+# Build the Docker image
+make build
+
+# Or build manually without Docker
+cd client && npm run build && cd ..
+SERVE_FRONTEND=1 uvicorn mediastudyshelf.main:app --host 0.0.0.0 --port 8000
+```
 
 ## Environment variables
 
