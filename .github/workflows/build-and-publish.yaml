@@ -31,6 +31,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: mediastudyshelf/mediastudyshelf
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
         id: push
