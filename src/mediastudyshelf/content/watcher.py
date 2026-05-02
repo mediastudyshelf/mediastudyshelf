@@ -13,8 +13,8 @@ from pathlib import Path
 
 from watchfiles import awatch
 
-from mediastudyshelf.routes import set_courses
-from mediastudyshelf.walker import walk_content
+from mediastudyshelf.api import set_courses
+from mediastudyshelf.content.walker import walk_content
 
 logger = logging.getLogger(__name__)
 

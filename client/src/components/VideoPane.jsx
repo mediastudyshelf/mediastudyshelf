@@ -2,37 +2,55 @@ import { useRef, useEffect, useState } from 'react';
 import Hls from 'hls.js';
 import { prepareHls, heartbeatHls } from '../lib/api';
 
-const HEARTBEAT_INTERVAL = 5_000; // 5 seconds — frequent enough for buffer management
+const HEARTBEAT_INTERVAL = 5_000;
 
 export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expanded, hidden, height }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const sessionIdRef = useRef(null);
+  const heartbeatRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Preparing video...');
+
+  // Increment to trigger session recovery
+  const [sessionRevision, setSessionRevision] = useState(0);
+  const resumeTimeRef = useRef(null);
 
   const activeVideo = videos?.find(v => v.url === activeVideoUrl) || videos?.[0];
   const mediaUrl = activeVideo?.url;
-  const [loading, setLoading] = useState(true);
 
-  // Request HLS, attach player, run heartbeat with playhead
+  // Main effect: start HLS session (runs on mediaUrl change or recovery)
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !mediaUrl) return;
 
     const abortController = new AbortController();
-    let heartbeatTimer = null;
-    setLoading(true);
+    const isRecovery = resumeTimeRef.current != null;
 
-    // Tear down previous HLS instance and reset video element
+    setLoading(true);
+    setLoadingMessage(isRecovery ? 'Recovering session...' : 'Preparing video...');
+
+    // Tear down previous
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
     sessionIdRef.current = null;
-    el.removeAttribute('src');
-    el.load();
-    el.currentTime = 0;
+
+    if (!isRecovery) {
+      el.removeAttribute('src');
+      el.load();
+      el.currentTime = 0;
+    }
+
+    const startPosition = isRecovery ? resumeTimeRef.current : 0;
+    resumeTimeRef.current = null;
 
     prepareHls(mediaUrl, abortController.signal).then(result => {
       if (abortController.signal.aborted) return;
@@ -45,15 +63,71 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
 
       sessionIdRef.current = result.id;
 
-      // Heartbeat sends current playhead position
-      heartbeatTimer = setInterval(() => {
-        const currentTime = el.currentTime || 0;
-        heartbeatHls(result.id, currentTime);
+      // Heartbeat — detect session death
+      const currentSessionId = result.id;
+      heartbeatRef.current = setInterval(async () => {
+        if (abortController.signal.aborted || !heartbeatRef.current) return;
+        // Guard against stale closures after session recovery
+        if (sessionIdRef.current !== currentSessionId) {
+          clearInterval(heartbeatRef.current);
+          heartbeatRef.current = null;
+          return;
+        }
+        const alive = await heartbeatHls(currentSessionId, el.currentTime || 0);
+        if (!alive && !abortController.signal.aborted) {
+          // Stop heartbeat, trigger recovery via state
+          clearInterval(heartbeatRef.current);
+          heartbeatRef.current = null;
+          resumeTimeRef.current = el.currentTime || 0;
+          setSessionRevision(r => r + 1);
+        }
       }, HEARTBEAT_INTERVAL);
 
       if (Hls.isSupported()) {
-        const hls = new Hls({ startPosition: 0 });
+        const hls = new Hls({
+          startPosition,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          manifestLoadingTimeOut: 10000,
+          manifestLoadingMaxRetry: 3,
+          levelLoadingTimeOut: 10000,
+          levelLoadingMaxRetry: 3,
+          fragLoadingTimeOut: 30000,
+          fragLoadingMaxRetry: 5,
+          fragLoadingRetryDelay: 500,
+        });
         hlsRef.current = hls;
+
+        // Handle errors with retry logic
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (abortController.signal.aborted) return;
+          
+          if (data.fatal) {
+            console.error('Fatal HLS error:', data.type, data.details);
+            // Try to recover
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              console.log('Attempting to recover from network error...');
+              hls.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              console.log('Attempting to recover from media error...');
+              hls.recoverMediaError();
+            } else {
+              // Unrecoverable error - trigger session recovery
+              hls.destroy();
+              hlsRef.current = null;
+              if (heartbeatRef.current) {
+                clearInterval(heartbeatRef.current);
+                heartbeatRef.current = null;
+              }
+              resumeTimeRef.current = el.currentTime || 0;
+              setSessionRevision(r => r + 1);
+            }
+          } else {
+            // Non-fatal error - log but continue
+            console.warn('HLS non-fatal error:', data.type, data.details);
+          }
+        });
+
         hls.loadSource(result.url);
         hls.attachMedia(el);
         hls.on(Hls.Events.FRAG_BUFFERED, () => {
@@ -61,6 +135,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
         });
       } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
         el.src = result.url;
+        if (startPosition > 0) el.currentTime = startPosition;
         el.addEventListener('canplay', () => setLoading(false), { once: true });
       } else {
         el.src = mediaUrl;
@@ -70,14 +145,17 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
 
     return () => {
       abortController.abort();
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
       sessionIdRef.current = null;
     };
-  }, [mediaUrl]);
+  }, [mediaUrl, sessionRevision]);
 
   // Pause video when hidden
   useEffect(() => {
@@ -156,7 +234,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
       {loading && (
         <div className="video-pane__loading">
           <div className="video-pane__spinner" />
-          <span>Preparing video...</span>
+          <span>{loadingMessage}</span>
         </div>
       )}
       <video

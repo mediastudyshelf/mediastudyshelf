@@ -1,86 +1,29 @@
-"""API route definitions."""
+"""GET /api/class/{course}/{module}/{class} — single-class detail with prev/next nav."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from mediastudyshelf.api.state import get_courses, media_url
 from mediastudyshelf.models import (
     AudioDetail,
     ClassDetail,
     ClassResponse,
-    ClassSummary,
     CourseRef,
-    CourseSummary,
     ExtraDetail,
     ModuleRef,
-    ModuleSummary,
     NavItem,
     NavResponse,
     PdfDetail,
-    TreeResponse,
     VideoDetail,
 )
-from mediastudyshelf.walker import ClassNode, CourseNode, ModuleNode
+from mediastudyshelf.content.walker import ClassNode, CourseNode, ModuleNode
 
-router = APIRouter(prefix="/api")
-
-# Populated at startup by main.py
-_courses: list[CourseNode] = []
-_content_root: Path = Path(".")
-
-
-def set_courses(courses: list[CourseNode], content_root: Path) -> None:
-    """Store the walked course tree for serving."""
-    global _courses, _content_root
-    _courses = courses
-    _content_root = content_root
-
-
-def _media_url(file_path: Path) -> str:
-    """Convert an absolute file path to a /media/... URL."""
-    rel = file_path.relative_to(_content_root)
-    return "/media/" + str(rel)
-
-
-# ── /api/tree ──────────────────────────────────────────────────────────────
-
-
-@router.get("/tree", response_model=TreeResponse)
-async def get_tree():
-    return TreeResponse(
-        courses=[
-            CourseSummary(
-                slug=course.slug,
-                title=course.title,
-                modules=[
-                    ModuleSummary(
-                        slug=module.slug,
-                        title=module.title,
-                        classes=[
-                            ClassSummary(
-                                slug=cls.slug,
-                                title=cls.title,
-                                order=ci,
-                            )
-                            for ci, cls in enumerate(module.classes, 1)
-                        ],
-                    )
-                    for module in course.modules
-                ],
-            )
-            for course in _courses
-        ]
-    )
-
-
-# ── /api/class ─────────────────────────────────────────────────────────────
+router = APIRouter()
 
 
 def _find_course(slug: str) -> CourseNode:
-    for c in _courses:
+    for c in get_courses():
         if c.slug == slug:
             return c
     raise HTTPException(status_code=404, detail=f"Course not found: {slug}")
@@ -150,7 +93,7 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
     videos = [
         VideoDetail(
             filename=v.filename,
-            url=_media_url(v.path),
+            url=media_url(v.path),
             duration_seconds=v.duration_seconds,
             is_primary=v.is_primary,
         )
@@ -160,7 +103,7 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
     pdfs = [
         PdfDetail(
             filename=pdf.filename,
-            url=_media_url(pdf.path),
+            url=media_url(pdf.path),
             pages=pdf.pages,
             size_bytes=pdf.size_bytes,
             is_primary=pdf.is_primary,
@@ -172,7 +115,7 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
         AudioDetail(
             filename=a.filename,
             label=a.label,
-            url=_media_url(a.path),
+            url=media_url(a.path),
             duration_seconds=a.duration_seconds,
         )
         for a in cls.audio
@@ -181,7 +124,7 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
     extras = [
         ExtraDetail(
             filename=e.filename,
-            url=_media_url(e.path),
+            url=media_url(e.path),
             size_bytes=e.size_bytes,
         )
         for e in cls.extras
@@ -203,49 +146,3 @@ async def get_class(course_slug: str, module_slug: str, class_slug: str):
         ),
         nav=nav,
     )
-
-
-# ── /api/hls ──────────────────────────────────────────────────────────────
-
-
-class HlsPrepareRequest(BaseModel):
-    video_url: str  # /media/... path
-
-
-class HlsPrepareResponse(BaseModel):
-    url: str
-    id: str
-
-
-class HlsHeartbeatRequest(BaseModel):
-    time: float  # playhead position in seconds
-
-
-@router.post("/hls/prepare", response_model=HlsPrepareResponse)
-async def hls_prepare(body: HlsPrepareRequest):
-    """Create an HLS streaming session for a video."""
-    import asyncio
-    from mediastudyshelf.hls import get_manager
-
-    if not body.video_url.startswith("/media/"):
-        raise HTTPException(status_code=400, detail="Invalid video URL")
-    rel = body.video_url[len("/media/"):]
-    video_path = _content_root / rel
-
-    if not video_path.is_file():
-        raise HTTPException(status_code=404, detail="Video file not found")
-
-    session_id, url = await asyncio.to_thread(get_manager().create, video_path)
-    return HlsPrepareResponse(url=url, id=session_id)
-
-
-@router.post("/hls/{session_id}/heartbeat")
-async def hls_heartbeat(session_id: str, body: HlsHeartbeatRequest):
-    """Report playhead position and keep session alive."""
-    from mediastudyshelf.hls import get_manager
-
-    if not get_manager().heartbeat(session_id, body.time):
-        raise HTTPException(status_code=404, detail="HLS session not found")
-    return {"status": "ok"}
-
-

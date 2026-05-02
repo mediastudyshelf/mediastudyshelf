@@ -30,25 +30,30 @@ export async function fetchClass(courseSlug, moduleSlug, classSlug) {
   return resp.json();
 }
 
-export async function prepareHls(videoUrl, signal) {
-  const resp = await fetch('/api/hls/prepare', {
+export async function prepareStream(mediaUrl, signal) {
+  const resp = await fetch('/api/stream/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ video_url: videoUrl }),
+    body: JSON.stringify({ media_url: mediaUrl }),
     signal,
   });
   if (!resp.ok) return null;
   return resp.json();
 }
 
-export async function heartbeatHls(id, time) {
+export async function heartbeatStream(id, time) {
   try {
-    await fetch(`/api/hls/${id}/heartbeat`, {
+    const resp = await fetch(`/api/stream/${id}/heartbeat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ time }),
     });
+    return resp.ok;
   } catch {
-    // best-effort
+    return true; // network error, not a 404 — don't trigger recovery
   }
 }
+
+// Backward compatibility aliases
+export const prepareHls = prepareStream;
+export const heartbeatHls = heartbeatStream;

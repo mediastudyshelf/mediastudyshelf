@@ -33,10 +33,11 @@ FPS_DEFAULT = 24
 # ── Codec detection ──────────────────────────────────────────────────────
 
 
-def probe_video(video_path: Path) -> tuple[str | None, str | None, float, None | float]:
-    """Return (video_codec, audio_codec, duration_seconds).
+def probe_media(media_path: Path) -> tuple[str | None, str | None, float, None | float]:
+    """Return (video_codec, audio_codec, duration_seconds, fps).
 
-    Returns (None, None, 0.0) on failure.
+    Returns (None, None, 0.0, FPS_DEFAULT) on failure.
+    For audio-only files, video_codec will be None.
     """
     try:
         result = subprocess.run(
@@ -46,7 +47,7 @@ def probe_video(video_path: Path) -> tuple[str | None, str | None, float, None |
                 "-print_format", "json",
                 "-show_format",
                 "-show_streams",
-                str(video_path),
+                str(media_path),
             ],
             capture_output=True,
             text=True,
@@ -73,7 +74,7 @@ def probe_video(video_path: Path) -> tuple[str | None, str | None, float, None |
         duration = float(data.get("format", {}).get("duration", 0))
         return video_codec, audio_codec, duration, fps
     except Exception as exc:
-        logger.warning("probe_video failed for %s: %s", video_path, exc)
+        logger.warning("probe_media failed for %s: %s", media_path, exc)
         return None, None, 0.0, FPS_DEFAULT
 
 
@@ -128,16 +129,17 @@ def _generate_virtual_playlist(
 @dataclass
 class Session:
     id: str
-    video_path: Path
+    media_path: Path  # Path to media file (video or audio)
     hls_dir: Path
     use_copy: bool  # True = transmux, False = re-encode
-    total_duration: float = 0.0  # full video length in seconds
+    total_duration: float = 0.0  # full media length in seconds
     process: subprocess.Popen | None = None
     paused: bool = False  # True when SIGSTOP'd
     last_heartbeat: float = field(default_factory=time.monotonic)
     playhead: float = 0.0
-    encode_start: float = 0.0  # absolute time in video where encoding started
+    encode_start: float = 0.0  # absolute time in media where encoding started
     fps: float = FPS_DEFAULT
+    is_audio_only: bool = False  # True for audio-only files
 
     @property
     def playlist_path(self) -> Path:
@@ -181,30 +183,33 @@ class SessionManager:
     def cache_dir(self) -> Path:
         return self._cache_dir
 
-    def create(self, video_path: Path) -> tuple[str, str]:
+    def create(self, media_path: Path) -> tuple[str, str]:
         """Create a new streaming session. Returns (session_id, hls_url)."""
         session_id = uuid.uuid4().hex[:16]
         hls_dir = self._cache_dir / session_id
         hls_dir.mkdir(parents=True, exist_ok=True)
         (hls_dir / "segments").mkdir(exist_ok=True)
 
-        video_codec, audio_codec, duration, fps = probe_video(video_path)
+        video_codec, audio_codec, duration, fps = probe_media(media_path)
         # use_copy = _can_copy(video_codec, audio_codec)
         use_copy = False
+        is_audio_only = video_codec is None and audio_codec is not None
 
         session = Session(
             id=session_id,
-            video_path=video_path,
+            media_path=media_path,
             hls_dir=hls_dir,
             use_copy=use_copy,
             total_duration=duration,
-            fps=fps
+            fps=fps if not is_audio_only else FPS_DEFAULT,
+            is_audio_only=is_audio_only,
         )
         self._sessions[session_id] = session
 
+        media_type = "audio" if is_audio_only else "video"
         logger.info(
-            "Session %s created for %s (mode: %s, duration: %.1fs)",
-            session_id, video_path.name,
+            "Session %s created for %s (type: %s, mode: %s, duration: %.1fs)",
+            session_id, media_path.name, media_type,
             "copy" if use_copy else "re-encode", duration,
         )
 
@@ -213,12 +218,17 @@ class SessionManager:
         self._spawn_ffmpeg(session, start_time=0.0)
         self._wait_for_buffer(session)
         session.last_heartbeat = time.monotonic()
-        return session_id, f"/hls/{session_id}/playlist.m3u8"
+        return session_id, f"/media/stream/{session_id}/playlist.m3u8"
 
     def heartbeat(self, session_id: str, playhead: float) -> bool:
         """Update session heartbeat and manage buffer via SIGSTOP/SIGCONT."""
         session = self._sessions.get(session_id)
         if session is None:
+            return False
+
+        # Session was cleaned up externally
+        if not session.hls_dir.is_dir():
+            self._sessions.pop(session_id, None)
             return False
 
         session.last_heartbeat = time.monotonic()
@@ -315,7 +325,7 @@ class SessionManager:
     # ── ffmpeg process management ────────────────────────────────
 
     def _spawn_ffmpeg(self, session: Session, start_time: float) -> None:
-        """Spawn a single ffmpeg process for the full video from start_time."""
+        """Spawn a single ffmpeg process for the full media from start_time."""
         if session.is_alive:
             return
 
@@ -333,7 +343,7 @@ class SessionManager:
         cmd += [
             "-fflags", "+genpts",
             "-readrate", "5",
-            "-i", str(session.video_path),
+            "-i", str(session.media_path),
             "-output_ts_offset", str(aligned_start),
             "-start_number", str(segment_index),
         ]
@@ -342,7 +352,17 @@ class SessionManager:
             cmd += ["-c", "copy"]
             # Copy mode: write real playlist directly (accurate durations)
             output_playlist = session.playlist_path
+        elif session.is_audio_only:
+            # Audio-only: no video codec, just audio to AAC
+            cmd += [
+                "-vn",  # no video
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-ac", "2",
+            ]
+            output_playlist = session.internal_playlist_path
         else:
+            # Video re-encode mode
             cmd += [
                 "-c:v", "libx264",
                 "-preset", "veryfast",

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-SAMPLE_CONTENT = str(Path(__file__).resolve().parent.parent / "sample-content")
+SAMPLE_CONTENT = str(Path(__file__).resolve().parent / "sample-content")
 os.environ["MEDIASTUDYSHELF_CONTENT_PATH"] = SAMPLE_CONTENT
 
 from mediastudyshelf.main import app  # noqa: E402
@@ -45,7 +45,7 @@ def test_class_full_response_shape(client):
 
     # Video
     assert cls["video"] is not None
-    assert cls["video"]["url"].startswith("/media/")
+    assert cls["video"]["url"].startswith("/media/assets/")
     assert cls["video"]["url"].endswith("/video.mp4")
     assert isinstance(cls["video"]["duration_seconds"], int)
 
@@ -56,7 +56,7 @@ def test_class_full_response_shape(client):
     assert primaries[0]["filename"] == "lesson-notes.pdf"
     for pdf in cls["pdfs"]:
         assert "filename" in pdf
-        assert pdf["url"].startswith("/media/")
+        assert pdf["url"].startswith("/media/assets/")
         assert isinstance(pdf["pages"], int)
         assert isinstance(pdf["size_bytes"], int)
 
@@ -65,7 +65,7 @@ def test_class_full_response_shape(client):
     for a in cls["audio"]:
         assert "filename" in a
         assert "label" in a
-        assert a["url"].startswith("/media/")
+        assert a["url"].startswith("/media/assets/")
 
     # Audio label override from class.json
     qa = next(a for a in cls["audio"] if a["filename"] == "q-and-a.mp3")

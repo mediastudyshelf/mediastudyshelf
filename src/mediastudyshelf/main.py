@@ -13,9 +13,9 @@ from mediastudyshelf.config import (
     serve_frontend,
     watch_enabled,
 )
-from mediastudyshelf.hls import SessionManager, set_manager, sweep_loop
-from mediastudyshelf.routes import router, set_courses
-from mediastudyshelf.walker import walk_content
+from mediastudyshelf.api import router, media_router, set_courses
+from mediastudyshelf.content.walker import walk_content
+from mediastudyshelf.streaming.hls import SessionManager, set_manager, sweep_loop
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
     watcher_task = None
     if watch_enabled():
-        from mediastudyshelf.watcher import watch_content as watch_content_dir
+        from mediastudyshelf.content.watcher import watch_content as watch_content_dir
 
         watcher_task = asyncio.create_task(watch_content_dir(content_path))
         logger.info("Filesystem watcher enabled for %s", content_path)
@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="MediaStudyShelf", version="0.1.0", lifespan=lifespan)
 app.include_router(router)
+app.include_router(media_router)
 
 
 @app.get("/health")
@@ -62,7 +63,8 @@ async def health():
 
 
 # Static file mounts — must come BEFORE the SPA catch-all so they take priority.
-app.mount("/media", StaticFiles(directory=str(get_content_path())), name="media")
+# Content files are now under /media/assets/*
+app.mount("/media/assets", StaticFiles(directory=str(get_content_path())), name="media-assets")
 
 if serve_frontend():
     _dist = get_frontend_dist()
@@ -73,59 +75,7 @@ if serve_frontend():
         logger.warning("SERVE_FRONTEND=1 but dist not found at %s", _dist)
 
 
-# ── Dynamic HLS serving — waits for segments to be ready ─────────────────
-
-
-@app.get("/hls/{session_id}/playlist.m3u8")
-async def hls_playlist(session_id: str):
-    from mediastudyshelf.hls import get_manager
-
-    mgr = get_manager()
-    session = mgr._sessions.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    if not session.playlist_path.is_file():
-        raise HTTPException(status_code=404, detail="Playlist not ready")
-
-    return FileResponse(
-        str(session.playlist_path),
-        media_type="application/vnd.apple.mpegurl",
-        headers={"Cache-Control": "no-cache"},
-    )
-
-
-@app.get("/hls/{session_id}/segments/{segment}")
-async def hls_segment(session_id: str, segment: str):
-    from mediastudyshelf.hls import get_manager
-
-    mgr = get_manager()
-    session = mgr._sessions.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    seg_path = session.hls_dir / "segments" / segment
-    if not segment.endswith(".ts"):
-        raise HTTPException(status_code=400, detail="Invalid segment")
-
-    # Serve immediately if ready
-    if seg_path.is_file() and seg_path.stat().st_size > 0:
-        return FileResponse(str(seg_path), media_type="video/mp2t")
-
-    # Segment not ready — resume ffmpeg if paused and wait.
-    # Do NOT trigger heartbeat/seek here — that's the frontend's job.
-    # HLS.js prefetches segments at various positions; triggering seeks
-    # from here causes cascading restarts.
-    if session.paused:
-        mgr._resume_ffmpeg(session)
-
-    # Wait for the segment to appear
-    for _ in range(300):  # up to 30 seconds
-        if seg_path.is_file() and seg_path.stat().st_size > 0:
-            return FileResponse(str(seg_path), media_type="video/mp2t")
-        await asyncio.sleep(0.1)
-
-    raise HTTPException(status_code=404, detail="Segment not ready")
+# Note: Dynamic streaming endpoints moved to media_router in routes.py
 
 
 # SPA fallback — must be registered last so /api/*, /media/*, /assets/* take priority.
@@ -142,3 +92,15 @@ async def spa_fallback(request: Request, full_path: str):
 
     from fastapi.responses import JSONResponse
     return JSONResponse({"detail": "Frontend not built"}, status_code=404)
+
+
+def main() -> None:
+    """Console-script entrypoint — launches the FastAPI app with uvicorn."""
+    import uvicorn
+
+    uvicorn.run(
+        "mediastudyshelf.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+    )
