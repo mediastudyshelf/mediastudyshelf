@@ -15,7 +15,8 @@ from mediastudyshelf.config import (
 )
 from mediastudyshelf.api import router, media_router, set_courses
 from mediastudyshelf.content.walker import walk_content
-from mediastudyshelf.streaming.hls import SessionManager, set_manager, sweep_loop
+from mediastudyshelf.streaming.hls import session_gc_loop, set_manager
+from mediastudyshelf.streaming.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ async def lifespan(app: FastAPI):
     courses = walk_content(content_path)
     set_courses(courses, content_path)
 
-    sweep_task = asyncio.create_task(sweep_loop())
+    session_gc_task = asyncio.create_task(session_gc_loop())
 
     watcher_task = None
     if watch_enabled():
@@ -41,10 +42,10 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    sweep_task.cancel()
+    session_gc_task.cancel()
     if watcher_task is not None:
         watcher_task.cancel()
-    for task in [sweep_task, watcher_task]:
+    for task in [session_gc_task, watcher_task]:
         if task is not None:
             try:
                 await task
