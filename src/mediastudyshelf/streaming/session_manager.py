@@ -24,16 +24,16 @@ import time
 import uuid
 from pathlib import Path
 
-from mediastudyshelf.streaming.hls import (
+from mediastudyshelf.streaming.media import probe_media
+from mediastudyshelf.streaming.constants import (
     BUFFER_THRESHOLD,
     ENCODE_CHUNK,
     FPS_DEFAULT,
     HEARTBEAT_TIMEOUT,
     SEGMENT_DURATION,
-    Session,
-    _generate_virtual_playlist,
-    probe_media,
 )
+from mediastudyshelf.streaming.playlist import _generate_virtual_playlist
+from mediastudyshelf.streaming.session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class SessionManager:
         (hls_dir / "segments").mkdir(exist_ok=True)
 
         video_codec, audio_codec, duration, fps = probe_media(media_path)
-        # use_copy = _can_copy(video_codec, audio_codec)
+        # use_copy = can_copy(video_codec, audio_codec)
         use_copy = False
         is_audio_only = video_codec is None and audio_codec is not None
 

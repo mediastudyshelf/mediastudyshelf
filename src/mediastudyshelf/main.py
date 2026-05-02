@@ -15,8 +15,7 @@ from mediastudyshelf.config import (
 )
 from mediastudyshelf.api import router, media_router, set_courses
 from mediastudyshelf.content.walker import walk_content
-from mediastudyshelf.streaming.hls import session_gc_loop, set_manager
-from mediastudyshelf.streaming.session_manager import SessionManager
+from mediastudyshelf.streaming import SessionManager, session_gc_loop, set_manager
 
 logger = logging.getLogger(__name__)
 

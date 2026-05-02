@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from mediastudyshelf.api.state import get_content_root
-from mediastudyshelf.streaming.hls import get_manager
+from mediastudyshelf.streaming import get_manager
 
 logger = logging.getLogger(__name__)
 
