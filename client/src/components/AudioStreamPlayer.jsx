@@ -18,12 +18,12 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
   const heartbeatRef = useRef(null);
   const barRef = useRef(null);
   const [progress, setProgress] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [displayDuration, setDisplayDuration] = useState(
     audio.duration_seconds ? formatDuration(audio.duration_seconds) : ''
   );
   const [loading, setLoading] = useState(false);
-  const [isReady, setIsReady] = useState(false);
-  
+
   // Session recovery
   const [sessionRevision, setSessionRevision] = useState(0);
   const resumeTimeRef = useRef(null);
@@ -34,13 +34,6 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
 
     const el = audioRef.current;
     if (!el) return;
-
-    // Already initialized and ready (not in recovery mode)
-    if (isReady && !resumeTimeRef.current) {
-      // Already ready, just play
-      el.play().catch(() => {});
-      return;
-    }
 
     const abortController = new AbortController();
     const isRecovery = resumeTimeRef.current != null;
@@ -63,6 +56,7 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
       el.load();
       el.currentTime = 0;
       setProgress(0);
+      setElapsedSeconds(0);
     }
 
     const startPosition = isRecovery ? resumeTimeRef.current : 0;
@@ -75,7 +69,6 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
         // Fallback to direct URL
         el.src = audio.url;
         setLoading(false);
-        setIsReady(true);
         el.play().catch(() => {});
         return;
       }
@@ -158,7 +151,6 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (!abortController.signal.aborted) {
             setLoading(false);
-            setIsReady(true);
             // Only auto-play if we're still in playing state
             if (isPlaying) {
               el.play().catch(() => {});
@@ -170,14 +162,12 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
         if (startPosition > 0) el.currentTime = startPosition;
         el.addEventListener('canplay', () => {
           setLoading(false);
-          setIsReady(true);
           el.play().catch(() => {});
         }, { once: true });
       } else {
         // Fallback
         el.src = audio.url;
         setLoading(false);
-        setIsReady(true);
         el.play().catch(() => {});
       }
     }).catch(() => {
@@ -196,7 +186,7 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
       }
       sessionIdRef.current = null;
     };
-  }, [isPlaying, audio.url, sessionRevision, isReady]);
+  }, [isPlaying, audio.url, sessionRevision]);
 
   // Cleanup when paused (stop heartbeats but keep resume position)
   useEffect(() => {
@@ -230,8 +220,8 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
 
   // Reset state when audio file changes
   useEffect(() => {
-    setIsReady(false);
     setProgress(0);
+    setElapsedSeconds(0);
     resumeTimeRef.current = null;
     setDisplayDuration(audio.duration_seconds ? formatDuration(audio.duration_seconds) : '');
   }, [audio.url, audio.duration_seconds]);
@@ -240,6 +230,7 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
     const el = audioRef.current;
     if (!el || !el.duration) return;
     setProgress(el.currentTime / el.duration);
+    setElapsedSeconds(el.currentTime);
   };
 
   const handleLoadedMetadata = () => {
@@ -251,6 +242,7 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
 
   const handleEnded = () => {
     setProgress(0);
+    setElapsedSeconds(0);
     onPause();
   };
 
@@ -272,7 +264,6 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
       if (el) {
         resumeTimeRef.current = el.currentTime;
       }
-      setIsReady(false);
       onPause();
     } else {
       onPlay();
@@ -297,7 +288,9 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
       <div className="audio-row__body">
         <div className="audio-row__top">
           <span className="asset-row__filename">{audio.label}</span>
-          <span className="audio-row__duration">{displayDuration}</span>
+          <span className="audio-row__duration">
+            {formatDuration(elapsedSeconds)}{displayDuration ? ` / ${displayDuration}` : ''}
+          </span>
         </div>
         <div className="audio-bar" ref={barRef} onClick={handleBarClick}>
           <div
