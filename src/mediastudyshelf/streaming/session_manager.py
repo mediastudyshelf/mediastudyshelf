@@ -24,7 +24,6 @@ import time
 import uuid
 from pathlib import Path
 
-from mediastudyshelf.streaming.media import probe_media
 from mediastudyshelf.streaming.constants import (
     BUFFER_THRESHOLD,
     ENCODE_CHUNK,
@@ -32,6 +31,8 @@ from mediastudyshelf.streaming.constants import (
     HEARTBEAT_TIMEOUT,
     SEGMENT_DURATION,
 )
+from mediastudyshelf.streaming.encoders import encoder_for
+from mediastudyshelf.streaming.media import probe_media
 from mediastudyshelf.streaming.playlist import _generate_virtual_playlist
 from mediastudyshelf.streaming.session import Session
 
@@ -126,6 +127,11 @@ class SessionManager:
             self._spawn_ffmpeg(session, start_time=playhead)
             return True
 
+        # Eager-encode sessions skip buffer management — ffmpeg runs to
+        # completion regardless of how far ahead of the playhead we are.
+        if encoder_for(session).eager_encode:
+            return True
+
         # Buffer management: pause/resume ffmpeg based on playhead
         if session.is_alive:
             buffer_ahead = encoded_end - playhead
@@ -169,7 +175,12 @@ class SessionManager:
     # ── Playlist helpers ─────────────────────────────────────────
 
     def _wait_for_buffer(self, session: Session, timeout: float = 60) -> None:
-        """Block until initial buffer is ready, then pause ffmpeg."""
+        """Block until initial buffer is ready, then pause ffmpeg.
+
+        For sessions whose encoder spec is ``eager_encode=True`` we skip the
+        pause step and let ffmpeg run to completion in the background — the
+        per-mode policy in ``encoders.py`` decides this.
+        """
         deadline = time.monotonic() + timeout
 
         # Phase 1: wait for at least one segment
@@ -182,6 +193,10 @@ class SessionManager:
             time.sleep(0.1)
         else:
             logger.warning("Session %s: timed out waiting for first segment", session.id)
+            return
+
+        if encoder_for(session).eager_encode:
+            logger.info("Session %s: eager-encode mode, ffmpeg runs to completion", session.id)
             return
 
         # Phase 2: let buffer build to ENCODE_CHUNK, then pause
@@ -197,75 +212,18 @@ class SessionManager:
     # ── ffmpeg process management ────────────────────────────────
 
     def _spawn_ffmpeg(self, session: Session, start_time: float) -> None:
-        """Spawn a single ffmpeg process for the full media from start_time."""
+        """Spawn ffmpeg for this session. The full command is built by the
+        per-mode spec in ``encoders.py``; this method only owns the process
+        lifecycle (spawn + bookkeeping)."""
         if session.is_alive:
             return
 
         session.encode_start = start_time
-
-        gop = int(session.fps * SEGMENT_DURATION)
-        aligned_start = (start_time // SEGMENT_DURATION) * SEGMENT_DURATION
-        segment_index = int(aligned_start // SEGMENT_DURATION)
-
-        cmd = ["ffmpeg", "-y"]
-
-        if start_time > 0:
-            cmd += ["-ss", str(aligned_start)]
-
-        cmd += [
-            "-fflags", "+genpts",
-            "-readrate", "5",
-            "-i", str(session.media_path),
-            "-output_ts_offset", str(aligned_start),
-            "-start_number", str(segment_index),
-        ]
-
-        if session.use_copy:
-            cmd += ["-c", "copy"]
-            # Copy mode: write real playlist directly (accurate durations)
-            output_playlist = session.playlist_path
-        elif session.is_audio_only:
-            # Audio-only: no video codec, just audio to AAC
-            cmd += [
-                "-vn",  # no video
-                "-c:a", "aac",
-                "-b:a", "128k",
-                "-ac", "2",
-            ]
-            output_playlist = session.internal_playlist_path
-        else:
-            # Video re-encode mode
-            cmd += [
-                "-c:v", "libx264",
-                "-preset", "veryfast",
-                "-crf", "23",
-                "-pix_fmt", "yuv420p",
-
-                # CRITICAL: deterministic segmentation
-                "-g", str(gop),
-                "-keyint_min", str(gop),
-                "-sc_threshold", "0",
-                # align keyframes exactly to segment boundaries
-                "-force_key_frames", f"expr:gte(t,n_forced*{SEGMENT_DURATION})",
-
-                "-c:a", "aac",
-                "-b:a", "128k",
-                "-ac", "2",
-            ]
-            # Re-encode mode: write to internal playlist (virtual one is served)
-            output_playlist = session.internal_playlist_path
-
-        cmd += [
-            "-hls_time", str(SEGMENT_DURATION),
-            "-hls_list_size", "0",
-            "-hls_segment_filename", str(session.hls_dir / "segments" / "seg_%04d.ts"),
-            "-f", "hls",
-            str(output_playlist),
-        ]
+        spec = encoder_for(session).build_spec(start_time)
 
         try:
             session.process = subprocess.Popen(
-                cmd,
+                spec.cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )

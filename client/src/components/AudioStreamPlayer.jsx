@@ -3,6 +3,10 @@ import Hls from 'hls.js';
 import { prepareHls, heartbeatHls } from '../lib/api';
 
 const HEARTBEAT_INTERVAL = 5_000;
+// How long after a pause we keep the streaming session alive (heartbeats keep
+// firing) so a quick resume is instant. After this, we drop the session and
+// the server's gc reaps it; the next play re-prepares from el.currentTime.
+const PAUSE_GRACE_MS = 5 * 60 * 1000;
 
 function formatDuration(seconds) {
   if (seconds == null) return '';
@@ -16,6 +20,8 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
   const hlsRef = useRef(null);
   const sessionIdRef = useRef(null);
   const heartbeatRef = useRef(null);
+  const pauseGraceTimerRef = useRef(null);
+  const abortControllerRef = useRef(null);
   const barRef = useRef(null);
   const [progress, setProgress] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -24,34 +30,45 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
   );
   const [loading, setLoading] = useState(false);
 
-  // Session recovery
+  // Session recovery (forced re-prepare from current position)
   const [sessionRevision, setSessionRevision] = useState(0);
   const resumeTimeRef = useRef(null);
 
-  // Start HLS session only when user clicks play (isPlaying becomes true)
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const el = audioRef.current;
-    if (!el) return;
-
-    const abortController = new AbortController();
-    const isRecovery = resumeTimeRef.current != null;
-
-    setLoading(true);
-
-    // Tear down previous
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
+  // Drop the streaming session entirely (used on track change, unmount, or
+  // when the pause grace timer expires). Audio element is left intact.
+  const teardownSession = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
     if (heartbeatRef.current) {
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = null;
     }
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    if (pauseGraceTimerRef.current) {
+      clearTimeout(pauseGraceTimerRef.current);
+      pauseGraceTimerRef.current = null;
+    }
     sessionIdRef.current = null;
+  };
 
-    if (!isRecovery) {
+  // Prepare a server session, attach HLS, start heartbeat. Called when the
+  // user hits play and there's no active session (first play, or after grace
+  // expired, or after a recovery).
+  const setupSession = () => {
+    const el = audioRef.current;
+    if (!el) return;
+
+    setLoading(true);
+
+    const startPosition = resumeTimeRef.current ?? 0;
+    resumeTimeRef.current = null;
+
+    if (startPosition === 0) {
       el.removeAttribute('src');
       el.load();
       el.currentTime = 0;
@@ -59,11 +76,11 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
       setElapsedSeconds(0);
     }
 
-    const startPosition = isRecovery ? resumeTimeRef.current : 0;
-    resumeTimeRef.current = null;
+    const abort = new AbortController();
+    abortControllerRef.current = abort;
 
-    prepareHls(audio.url, abortController.signal, startPosition).then(result => {
-      if (abortController.signal.aborted) return;
+    prepareHls(audio.url, abort.signal, startPosition).then(result => {
+      if (abort.signal.aborted) return;
 
       if (!result) {
         // Fallback to direct URL
@@ -73,21 +90,20 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
         return;
       }
 
-      sessionIdRef.current = result.id;
+      const sid = result.id;
+      sessionIdRef.current = sid;
 
-      // Heartbeat — detect session death with guard against stale sessions
-      const currentSessionId = result.id;
       heartbeatRef.current = setInterval(async () => {
-        if (abortController.signal.aborted || !heartbeatRef.current) return;
-        // Guard against stale closures after session recovery
-        if (sessionIdRef.current !== currentSessionId) {
+        if (abort.signal.aborted || !heartbeatRef.current) return;
+        // Stale-closure guard: if a recovery rotated the session id, stop.
+        if (sessionIdRef.current !== sid) {
           clearInterval(heartbeatRef.current);
           heartbeatRef.current = null;
           return;
         }
-        const alive = await heartbeatHls(currentSessionId, el.currentTime || 0);
-        if (!alive && !abortController.signal.aborted) {
-          // Stop heartbeat, trigger recovery
+        const alive = await heartbeatHls(sid, el.currentTime || 0);
+        if (!alive && !abort.signal.aborted) {
+          // Server says it doesn't know this session anymore — recover.
           clearInterval(heartbeatRef.current);
           heartbeatRef.current = null;
           resumeTimeRef.current = el.currentTime || 0;
@@ -98,7 +114,6 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
       if (Hls.isSupported()) {
         const hls = new Hls({
           startPosition,
-          maxBufferLength: 30,
           maxMaxBufferLength: 60,
           manifestLoadingTimeOut: 10000,
           manifestLoadingMaxRetry: 3,
@@ -107,28 +122,22 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
           fragLoadingTimeOut: 30000,
           fragLoadingMaxRetry: 5,
           fragLoadingRetryDelay: 500,
-          // Audio-only streams work better with these settings
           maxBufferSize: 0,
           maxBufferLength: 10,
           liveSyncDurationCount: 1,
         });
         hlsRef.current = hls;
 
-        // Handle errors with retry logic
         hls.on(Hls.Events.ERROR, (event, data) => {
-          if (abortController.signal.aborted) return;
-          
+          if (abort.signal.aborted) return;
           if (data.fatal) {
             console.error('Fatal HLS error:', data.type, data.details);
-            // Try to recover
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              console.log('Attempting to recover from network error...');
               hls.startLoad();
             } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-              console.log('Attempting to recover from media error...');
               hls.recoverMediaError();
             } else {
-              // Unrecoverable error - trigger session recovery
+              // Unrecoverable — drop the session and trigger a recovery.
               hls.destroy();
               hlsRef.current = null;
               if (heartbeatRef.current) {
@@ -139,23 +148,17 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
               setSessionRevision(r => r + 1);
             }
           } else {
-            // Non-fatal error - log but continue
             console.warn('HLS non-fatal error:', data.type, data.details);
           }
         });
 
         hls.loadSource(result.url);
         hls.attachMedia(el);
-        
-        // Wait for manifest to be parsed before considering ready
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          if (!abortController.signal.aborted) {
-            setLoading(false);
-            // Only auto-play if we're still in playing state
-            if (isPlaying) {
-              el.play().catch(() => {});
-            }
-          }
+          if (abort.signal.aborted) return;
+          setLoading(false);
+          if (isPlaying) el.play().catch(() => {});
         });
       } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
         el.src = result.url;
@@ -165,7 +168,6 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
           el.play().catch(() => {});
         }, { once: true });
       } else {
-        // Fallback
         el.src = audio.url;
         setLoading(false);
         el.play().catch(() => {});
@@ -173,52 +175,52 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
     }).catch(() => {
       setLoading(false);
     });
+  };
 
-    return () => {
-      abortController.abort();
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      sessionIdRef.current = null;
-    };
-  }, [isPlaying, audio.url, sessionRevision]);
-
-  // Cleanup when paused (stop heartbeats but keep resume position)
+  // Track change or forced recovery → drop the session entirely. Setup runs
+  // on the next play. Also covers unmount (cleanup fires on dep change OR
+  // component teardown).
   useEffect(() => {
-    if (!isPlaying) {
-      const el = audioRef.current;
-      if (el) {
-        el.pause();
+    return () => {
+      teardownSession();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audio.url, sessionRevision]);
+
+  // Play/pause control. This effect never destroys the session on its own
+  // (the pause grace timer does, after PAUSE_GRACE_MS).
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+
+    if (isPlaying) {
+      // Cancel a pending pause-grace teardown, if any.
+      if (pauseGraceTimerRef.current) {
+        clearTimeout(pauseGraceTimerRef.current);
+        pauseGraceTimerRef.current = null;
       }
-      // Keep session alive briefly for resume, but stop heartbeat
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
+      if (sessionIdRef.current) {
+        // Reuse the live session — instant resume.
+        el.play().catch(() => {});
+      } else {
+        // First play, or grace already expired.
+        setupSession();
+      }
+    } else {
+      el.pause();
+      // Arm the grace timer; if no resume within PAUSE_GRACE_MS, drop the
+      // session so the server can gc it.
+      if (sessionIdRef.current && !pauseGraceTimerRef.current) {
+        pauseGraceTimerRef.current = setTimeout(() => {
+          resumeTimeRef.current = el.currentTime || 0;
+          teardownSession();
+        }, PAUSE_GRACE_MS);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      sessionIdRef.current = null;
-    };
-  }, []);
-
-  // Reset state when audio file changes
+  // Reset display state when audio file changes
   useEffect(() => {
     setProgress(0);
     setElapsedSeconds(0);
@@ -259,11 +261,6 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
 
   const togglePlay = () => {
     if (isPlaying) {
-      // Store current time for resume when paused
-      const el = audioRef.current;
-      if (el) {
-        resumeTimeRef.current = el.currentTime;
-      }
       onPause();
     } else {
       onPlay();
