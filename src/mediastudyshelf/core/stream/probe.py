@@ -9,7 +9,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from mediastudyshelf.streaming.constants import FPS_DEFAULT
+from mediastudyshelf.core.stream.constants import FPS_DEFAULT
 
 logger = logging.getLogger(__name__)
 

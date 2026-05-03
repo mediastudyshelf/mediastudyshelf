@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from pypdf import PdfWriter
 
-from mediastudyshelf.content.media import (
+from mediastudyshelf.core.content.probe import (
     _cache,
     clear_cache,
     get_media_duration,
@@ -106,7 +106,7 @@ def test_cache_prevents_recomputation(tiny_pdf: Path):
     assert len(_cache) == 1
 
     # Patch PdfReader so any real call would blow up
-    with patch("mediastudyshelf.content.media.PdfReader", side_effect=AssertionError("should not be called")):
+    with patch("mediastudyshelf.core.content.probe.PdfReader", side_effect=AssertionError("should not be called")):
         result2 = get_pdf_page_count(tiny_pdf)
 
     assert result2 == 4  # same result, from cache

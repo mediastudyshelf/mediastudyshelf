@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from mediastudyshelf.api.state import get_courses, media_url
-from mediastudyshelf.models import (
+from mediastudyshelf.api.types import (
     AudioDetail,
     ClassDetail,
     ClassResponse,
@@ -17,7 +16,8 @@ from mediastudyshelf.models import (
     PdfDetail,
     VideoDetail,
 )
-from mediastudyshelf.content.walker import ClassNode, CourseNode, ModuleNode
+from mediastudyshelf.core.state import get_courses, media_url
+from mediastudyshelf.core.types.content import ClassNode, CourseNode, ModuleNode
 
 router = APIRouter()
 

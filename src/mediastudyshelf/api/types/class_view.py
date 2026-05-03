@@ -1,34 +1,6 @@
-"""Pydantic response models matching the API shape in SPEC.md §5."""
+"""Pydantic shapes for ``GET /api/class/{course}/{module}/{class}``."""
 
 from pydantic import BaseModel, Field
-
-
-# ── /api/tree models ────────────────────────────────────────────────────────
-
-
-class ClassSummary(BaseModel):
-    slug: str
-    title: str
-    order: int
-
-
-class ModuleSummary(BaseModel):
-    slug: str
-    title: str
-    classes: list[ClassSummary]
-
-
-class CourseSummary(BaseModel):
-    slug: str
-    title: str
-    modules: list[ModuleSummary]
-
-
-class TreeResponse(BaseModel):
-    courses: list[CourseSummary]
-
-
-# ── /api/class models ──────────────────────────────────────────────────────
 
 
 class CourseRef(BaseModel):

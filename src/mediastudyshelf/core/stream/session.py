@@ -5,8 +5,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mediastudyshelf.streaming.constants import FPS_DEFAULT
-from mediastudyshelf.streaming.playlist import _parse_playlist_duration
+from mediastudyshelf.core.stream.constants import FPS_DEFAULT
+from mediastudyshelf.core.stream.playlist import _parse_playlist_duration
 
 
 @dataclass

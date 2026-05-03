@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from mediastudyshelf.api import class_view, stream, tree
-from mediastudyshelf.api.state import set_courses
+from mediastudyshelf.core.state import set_courses
 
 router = APIRouter(prefix="/api")
 router.include_router(tree.router)

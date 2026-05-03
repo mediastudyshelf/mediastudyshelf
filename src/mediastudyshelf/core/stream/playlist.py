@@ -3,7 +3,7 @@
 import math
 from pathlib import Path
 
-from mediastudyshelf.streaming.constants import SEGMENT_DURATION
+from mediastudyshelf.core.stream.constants import SEGMENT_DURATION
 
 
 def _parse_playlist_duration(playlist_path: Path) -> float:

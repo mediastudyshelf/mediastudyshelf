@@ -23,8 +23,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 
-from mediastudyshelf.streaming.constants import SEGMENT_DURATION
-from mediastudyshelf.streaming.session import Session
+from mediastudyshelf.core.stream.constants import SEGMENT_DURATION
+from mediastudyshelf.core.stream.session import Session
 
 
 @dataclass(frozen=True)

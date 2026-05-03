@@ -9,14 +9,14 @@ Public surface:
 - ``session_gc_loop`` — background task that periodically GCs idle sessions.
 
 The singleton lives in this ``__init__`` (rather than a submodule) so that
-``from mediastudyshelf.streaming import get_manager`` is the canonical access
-path and the package's public API is visible at a glance.
+``from mediastudyshelf.core.stream import get_manager`` is the canonical
+access path and the package's public API is visible at a glance.
 """
 
 import asyncio
 
-from mediastudyshelf.streaming.constants import SESSION_GC_INTERVAL
-from mediastudyshelf.streaming.session_manager import SessionManager
+from mediastudyshelf.core.stream.constants import SESSION_GC_INTERVAL
+from mediastudyshelf.core.stream.session_manager import SessionManager
 
 _manager: SessionManager | None = None
 

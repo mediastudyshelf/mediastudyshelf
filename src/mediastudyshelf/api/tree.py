@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from mediastudyshelf.api.state import get_courses
-from mediastudyshelf.models import (
+from mediastudyshelf.api.types import (
     ClassSummary,
     CourseSummary,
     ModuleSummary,
     TreeResponse,
 )
+from mediastudyshelf.core.state import get_courses
 
 router = APIRouter()
 

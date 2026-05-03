@@ -14,7 +14,7 @@ from pathlib import Path
 from watchfiles import awatch
 
 from mediastudyshelf.api import set_courses
-from mediastudyshelf.content.walker import walk_content
+from mediastudyshelf.core.content.walker import walk_content
 
 logger = logging.getLogger(__name__)
 

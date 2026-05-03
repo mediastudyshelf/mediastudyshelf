@@ -14,29 +14,16 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 
-from mediastudyshelf.api.state import get_content_root
-from mediastudyshelf.streaming import get_manager
+from mediastudyshelf.api.types import (
+    StreamHeartbeatRequest,
+    StreamPrepareRequest,
+    StreamPrepareResponse,
+)
+from mediastudyshelf.core.state import get_content_root
+from mediastudyshelf.core.stream import get_manager
 
 logger = logging.getLogger(__name__)
-
-
-# ── Models ─────────────────────────────────────────────────────────────────
-
-
-class StreamPrepareRequest(BaseModel):
-    media_url: str  # /media/assets/... path (video or audio)
-    start_time: float = 0.0  # seconds; where ffmpeg should begin encoding
-
-
-class StreamPrepareResponse(BaseModel):
-    url: str
-    id: str
-
-
-class StreamHeartbeatRequest(BaseModel):
-    time: float  # playhead position in seconds
 
 
 # ── /api/stream — control plane ────────────────────────────────────────────

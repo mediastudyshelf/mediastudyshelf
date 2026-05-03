@@ -1,4 +1,4 @@
-"""Runtime state shared across API routes.
+"""Runtime state shared across the app.
 
 Holds the walked course tree and the root it was walked from, repopulated at
 startup and on each watcher-triggered reload. Kept paired so ``media_url``
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mediastudyshelf.content.walker import CourseNode
+from mediastudyshelf.core.types.content import CourseNode
 
 _courses: list[CourseNode] = []
 _content_root: Path = Path(".")

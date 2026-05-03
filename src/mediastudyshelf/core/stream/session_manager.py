@@ -24,17 +24,17 @@ import time
 import uuid
 from pathlib import Path
 
-from mediastudyshelf.streaming.constants import (
+from mediastudyshelf.core.stream.constants import (
     BUFFER_THRESHOLD,
     ENCODE_CHUNK,
     FPS_DEFAULT,
     HEARTBEAT_TIMEOUT,
     SEGMENT_DURATION,
 )
-from mediastudyshelf.streaming.encoders import encoder_for
-from mediastudyshelf.streaming.media import probe_media
-from mediastudyshelf.streaming.playlist import _generate_virtual_playlist
-from mediastudyshelf.streaming.session import Session
+from mediastudyshelf.core.stream.encoders import encoder_for
+from mediastudyshelf.core.stream.playlist import _generate_virtual_playlist
+from mediastudyshelf.core.stream.probe import probe_media
+from mediastudyshelf.core.stream.session import Session
 
 logger = logging.getLogger(__name__)
 

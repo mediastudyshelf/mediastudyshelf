@@ -14,8 +14,8 @@ from mediastudyshelf.config import (
     watch_enabled,
 )
 from mediastudyshelf.api import router, media_router, set_courses
-from mediastudyshelf.content.walker import walk_content
-from mediastudyshelf.streaming import SessionManager, session_gc_loop, set_manager
+from mediastudyshelf.core.content.walker import walk_content
+from mediastudyshelf.core.stream import SessionManager, session_gc_loop, set_manager
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
     watcher_task = None
     if watch_enabled():
-        from mediastudyshelf.content.watcher import watch_content as watch_content_dir
+        from mediastudyshelf.core.content.watcher import watch_content as watch_content_dir
 
         watcher_task = asyncio.create_task(watch_content_dir(content_path))
         logger.info("Filesystem watcher enabled for %s", content_path)
