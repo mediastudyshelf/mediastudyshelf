@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Point at sample-content before importing the app
-SAMPLE_CONTENT = str(Path(__file__).resolve().parent.parent / "sample-content")
+SAMPLE_CONTENT = str(Path(__file__).resolve().parent / "sample-content")
 os.environ["MEDIASTUDYSHELF_CONTENT_PATH"] = SAMPLE_CONTENT
 
 from mediastudyshelf.main import app  # noqa: E402
@@ -73,7 +73,7 @@ def test_health_still_works(client):
 
 
 def test_media_accept_ranges(client):
-    url = "/media/01-intro-to-systems-thinking/01-foundations/01-what-is-a-system/lesson-notes.pdf"
+    url = "/media/assets/01-intro-to-systems-thinking/01-foundations/01-what-is-a-system/lesson-notes.pdf"
     resp = client.head(url)
     assert resp.status_code == 200
     assert resp.headers.get("accept-ranges") == "bytes"

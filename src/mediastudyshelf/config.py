@@ -7,9 +7,16 @@ from pathlib import Path
 def get_content_path() -> Path:
     """Return the resolved content directory path.
 
-    Reads from MEDIASTUDYSHELF_CONTENT_PATH, defaulting to ./sample-content.
+    Reads from MEDIASTUDYSHELF_CONTENT_PATH. Required — no default; the server
+    refuses to start without it so misconfiguration fails fast instead of
+    serving an empty tree.
     """
-    raw = os.environ.get("MEDIASTUDYSHELF_CONTENT_PATH", "./sample-content")
+    raw = os.environ.get("MEDIASTUDYSHELF_CONTENT_PATH")
+    if not raw:
+        raise RuntimeError(
+            "MEDIASTUDYSHELF_CONTENT_PATH is not set. "
+            "Point it at the directory holding your course folders."
+        )
     return Path(raw).resolve()
 
 

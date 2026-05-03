@@ -93,7 +93,7 @@ Example `class.json` with audio labels:
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEDIASTUDYSHELF_CONTENT_PATH` | `./sample-content` | Path to the content directory inside the container |
+| `MEDIASTUDYSHELF_CONTENT_PATH` | _(required)_ | Path to the content directory inside the container |
 | `SERVE_FRONTEND` | off | Set to `1` to serve the built-in web UI |
 | `MEDIASTUDYSHELF_WATCH` | off | Set to `1` to auto-detect content changes (useful during content authoring) |
 

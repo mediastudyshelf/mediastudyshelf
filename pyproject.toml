@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.scripts]
-mediastudyshelf-walker = "mediastudyshelf.walker:main"
+mediastudyshelf-server = "mediastudyshelf.main:main"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -20,4 +20,4 @@ RUN set -o errexit -o nounset; \
 
 WORKDIR /opt/mediastudyshelf
 
-CMD [ "uvicorn", "mediastudyshelf.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" ]
+CMD [ "mediastudyshelf-server" ]

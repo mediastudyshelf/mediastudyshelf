@@ -63,7 +63,9 @@ Open http://localhost:5173.
 ```bash
 # Terminal 1: Python backend (requires Python 3.11+, ffmpeg)
 pip install -e ".[dev]"
-MEDIASTUDYSHELF_WATCH=1 uvicorn mediastudyshelf.main:app --reload
+MEDIASTUDYSHELF_CONTENT_PATH=/path/to/your/content \
+  MEDIASTUDYSHELF_WATCH=1 \
+  mediastudyshelf-server
 
 # Terminal 2: Vite dev server (requires Node.js 20+)
 cd client && npm install && npm run dev
@@ -79,14 +81,16 @@ make build
 
 # Or build manually without Docker
 cd client && npm run build && cd ..
-SERVE_FRONTEND=1 uvicorn mediastudyshelf.main:app --host 0.0.0.0 --port 8000
+MEDIASTUDYSHELF_CONTENT_PATH=/path/to/your/content \
+  SERVE_FRONTEND=1 \
+  mediastudyshelf-server
 ```
 
 ## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEDIASTUDYSHELF_CONTENT_PATH` | `./sample-content` | Path to the content directory |
+| `MEDIASTUDYSHELF_CONTENT_PATH` | _(required)_ | Path to the content directory |
 | `MEDIASTUDYSHELF_WATCH` | off | Set to `1` to re-walk content on filesystem changes (dev mode) |
 | `SERVE_FRONTEND` | off | Set to `1` to serve the built frontend from `/client/dist` |
 

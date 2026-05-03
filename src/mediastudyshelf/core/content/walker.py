@@ -1,19 +1,28 @@
 """Filesystem content walker — builds a course tree from a folder structure.
 
-Usage:
-    python -m mediastudyshelf.walker ./sample-content
+Domain types (``FileEntry``, ``ClassNode``, ``ModuleNode``, ``CourseNode``)
+live in ``mediastudyshelf.core.types.content``. This module owns the
+walking + enrichment logic that produces them.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import os
 import re
-import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from mediastudyshelf.core.content.probe import (
+    clear_cache,
+    get_media_duration,
+    get_pdf_page_count,
+)
+from mediastudyshelf.core.types.content import (
+    ClassNode,
+    CourseNode,
+    FileEntry,
+    ModuleNode,
+)
 
 # ── File classification by extension ────────────────────────────────────────
 
@@ -69,52 +78,6 @@ def file_display_name(filename: str) -> str:
     return stem.replace("-", " ").replace("_", " ").capitalize()
 
 
-# ── Data structures ─────────────────────────────────────────────────────────
-
-
-@dataclass
-class FileEntry:
-    filename: str
-    category: str  # video | pdf | audio | extra
-    path: Path  # absolute path on disk
-    size_bytes: int = 0
-    is_primary: bool = False  # only meaningful for PDFs
-    label: str = ""  # display label
-    pages: int | None = None  # PDF page count
-    duration_seconds: int | None = None  # video/audio duration
-
-
-@dataclass
-class ClassNode:
-    slug: str
-    title: str
-    order: int | None
-    path: Path
-    videos: list[FileEntry] = field(default_factory=list)
-    pdfs: list[FileEntry] = field(default_factory=list)
-    audio: list[FileEntry] = field(default_factory=list)
-    extras: list[FileEntry] = field(default_factory=list)
-
-
-@dataclass
-class ModuleNode:
-    slug: str
-    title: str
-    order: int | None
-    path: Path
-    classes: list[ClassNode] = field(default_factory=list)
-
-
-@dataclass
-class CourseNode:
-    slug: str
-    title: str
-    order: int | None
-    path: Path
-    modules: list[ModuleNode] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
 # ── Optional metadata loading ──────────────────────────────────────────────
 
 
@@ -158,13 +121,6 @@ def _resolve_primary_pdf(pdfs: list[FileEntry], metadata: dict[str, Any]) -> Non
     # Fallback: first alphabetically (list is already sorted)
     pdfs[0].is_primary = True
 
-
-# ── Enrichment helpers (thin wrappers around media.py) ──────────────────────
-
-from mediastudyshelf.media import clear_cache, get_media_duration, get_pdf_page_count
-
-_get_pdf_pages = get_pdf_page_count
-_get_duration = get_media_duration
 
 # ── Walking logic ───────────────────────────────────────────────────────────
 
@@ -213,9 +169,9 @@ def walk_class(class_path: Path) -> ClassNode:
         )
         # Enrich with metadata from actual file contents
         if category == "pdf":
-            fe.pages = _get_pdf_pages(entry)
+            fe.pages = get_pdf_page_count(entry)
         elif category in ("video", "audio"):
-            fe.duration_seconds = _get_duration(entry)
+            fe.duration_seconds = get_media_duration(entry)
 
         if category == "video":
             videos.append(fe)
@@ -304,62 +260,3 @@ def walk_content(content_dir: str | Path) -> list[CourseNode]:
 
     courses.sort(key=lambda c: _sort_key((c.order, c.slug)))
     return courses
-
-
-# ── Pretty-print for CLI ───────────────────────────────────────────────────
-
-
-def print_tree(courses: list[CourseNode]) -> None:
-    """Print a human-readable tree to stdout."""
-    for course in courses:
-        print(f"Course: {course.title} [{course.slug}]")
-        for mi, module in enumerate(course.modules, 1):
-            print(f"  Module {mi}: {module.title} [{module.slug}]")
-            for ci, cls in enumerate(module.classes, 1):
-                print(f"    {mi}.{ci} {cls.title} [{cls.slug}]")
-                for vid in cls.videos:
-                    primary = " [PRIMARY]" if vid.is_primary else ""
-                    dur = f", {vid.duration_seconds}s" if vid.duration_seconds else ""
-                    print(f"        Video: {vid.filename} ({vid.size_bytes} bytes{dur}){primary}")
-                if cls.pdfs:
-                    for pdf in cls.pdfs:
-                        primary = " [PRIMARY]" if pdf.is_primary else ""
-                        pg = f", {pdf.pages} pages" if pdf.pages else ""
-                        print(
-                            f"        PDF: {pdf.filename} "
-                            f"({pdf.size_bytes} bytes{pg}){primary}"
-                        )
-                if cls.audio:
-                    for a in cls.audio:
-                        dur = f", {a.duration_seconds}s" if a.duration_seconds else ""
-                        print(f"        Audio: {a.filename} ({a.size_bytes} bytes{dur})")
-                if cls.extras:
-                    for e in cls.extras:
-                        print(f"        Extra: {e.filename} ({e.size_bytes} bytes)")
-
-
-# ── CLI entrypoint ──────────────────────────────────────────────────────────
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Walk a content directory and print the course tree."
-    )
-    parser.add_argument("content_dir", help="Path to the content directory")
-    args = parser.parse_args()
-
-    try:
-        courses = walk_content(args.content_dir)
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not courses:
-        print("No courses found.")
-        sys.exit(0)
-
-    print_tree(courses)
-
-
-if __name__ == "__main__":
-    main()
