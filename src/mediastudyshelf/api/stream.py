@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class StreamPrepareRequest(BaseModel):
     media_url: str  # /media/assets/... path (video or audio)
+    start_time: float = 0.0  # seconds; where ffmpeg should begin encoding
 
 
 class StreamPrepareResponse(BaseModel):
@@ -54,7 +55,9 @@ async def stream_prepare(body: StreamPrepareRequest):
     if not media_path.is_file():
         raise HTTPException(status_code=404, detail="Media file not found")
 
-    session_id, url = await asyncio.to_thread(get_manager().create, media_path)
+    session_id, url = await asyncio.to_thread(
+        get_manager().create, media_path, body.start_time
+    )
     return StreamPrepareResponse(url=url, id=session_id)
 
 

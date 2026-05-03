@@ -62,7 +62,7 @@ export default function AudioStreamPlayer({ audio, isPlaying, onPlay, onPause })
     const startPosition = isRecovery ? resumeTimeRef.current : 0;
     resumeTimeRef.current = null;
 
-    prepareHls(audio.url, abortController.signal).then(result => {
+    prepareHls(audio.url, abortController.signal, startPosition).then(result => {
       if (abortController.signal.aborted) return;
 
       if (!result) {

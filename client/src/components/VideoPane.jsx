@@ -52,7 +52,7 @@ export default function VideoPane({ videos, activeVideoUrl, onVideoSelect, expan
     const startPosition = isRecovery ? resumeTimeRef.current : 0;
     resumeTimeRef.current = null;
 
-    prepareHls(mediaUrl, abortController.signal).then(result => {
+    prepareHls(mediaUrl, abortController.signal, startPosition).then(result => {
       if (abortController.signal.aborted) return;
 
       if (!result) {

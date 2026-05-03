@@ -30,11 +30,11 @@ export async function fetchClass(courseSlug, moduleSlug, classSlug) {
   return resp.json();
 }
 
-export async function prepareStream(mediaUrl, signal) {
+export async function prepareStream(mediaUrl, signal, startTime = 0) {
   const resp = await fetch('/api/stream/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ media_url: mediaUrl }),
+    body: JSON.stringify({ media_url: mediaUrl, start_time: startTime }),
     signal,
   });
   if (!resp.ok) return null;

@@ -48,8 +48,15 @@ class SessionManager:
     def cache_dir(self) -> Path:
         return self._cache_dir
 
-    def create(self, media_path: Path) -> tuple[str, str]:
-        """Create a new streaming session. Returns (session_id, hls_url)."""
+    def create(self, media_path: Path, start_time: float = 0.0) -> tuple[str, str]:
+        """Create a new streaming session.
+
+        ``start_time`` lets the caller (e.g. resume-from-pause) seek ffmpeg to a
+        specific timestamp at session creation, so ``_wait_for_buffer`` warms up
+        segments around the resume point instead of from t=0.
+
+        Returns (session_id, hls_url).
+        """
         session_id = uuid.uuid4().hex[:16]
         hls_dir = self._cache_dir / session_id
         hls_dir.mkdir(parents=True, exist_ok=True)
@@ -80,7 +87,7 @@ class SessionManager:
 
         if not use_copy:
             _generate_virtual_playlist(session.playlist_path, duration)
-        self._spawn_ffmpeg(session, start_time=0.0)
+        self._spawn_ffmpeg(session, start_time=start_time)
         self._wait_for_buffer(session)
         session.last_heartbeat = time.monotonic()
         return session_id, f"/media/stream/{session_id}/playlist.m3u8"
